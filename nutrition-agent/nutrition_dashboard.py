@@ -33,13 +33,7 @@ from nutrition_agent import (
     DietaryGoal, create_sample_profile
 )
 
-# Import datapizza
-sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-core"))
-# Add OpenAI-like and Google client packages to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-openai-like"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-google"))
-
-# Import clients AFTER adding paths
+# Import clients (installed in editable mode)
 from datapizza.clients.google import GoogleClient  # type: ignore
 from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
 
