@@ -564,8 +564,10 @@ ESEMPIO RICETTA AUTENTICA:
             notes=f"Piano generato per {date} - {'Giorno allenamento' if is_workout_day else 'Giorno riposo'}"
         )
         
-        # Salva nello storico
-        self.meal_history.append(asdict(daily_plan))
+        # Salva nello storico - usa dict normale per evitare problemi con enum
+        # La conversione JSON-safe verrà fatta da _save_meal_history()
+        plan_dict = asdict(daily_plan)
+        self.meal_history.append(plan_dict)
         self._save_meal_history()
         
         return daily_plan
