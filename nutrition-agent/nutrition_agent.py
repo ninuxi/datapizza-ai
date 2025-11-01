@@ -152,8 +152,24 @@ class NutritionAgent:
     
     def _save_meal_history(self):
         """Salva storico pasti"""
+        # Converti oggetti non serializzabili in JSON-friendly format
+        def convert_to_json_safe(obj):
+            if isinstance(obj, MealType):
+                return obj.value
+            elif isinstance(obj, (ActivityLevel, DietaryGoal)):
+                return obj.value
+            elif hasattr(obj, '__dict__'):
+                return {k: convert_to_json_safe(v) for k, v in obj.__dict__.items()}
+            elif isinstance(obj, list):
+                return [convert_to_json_safe(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {k: convert_to_json_safe(v) for k, v in obj.items()}
+            return obj
+        
+        safe_history = convert_to_json_safe(self.meal_history)
+        
         with open(self.meal_history_file, 'w') as f:
-            json.dump(self.meal_history, f, indent=2)
+            json.dump(safe_history, f, indent=2, ensure_ascii=False)
     
     def _get_seasonal_ingredients(self) -> Dict[str, List[str]]:
         """Restituisce ingredienti di stagione per mese"""
@@ -409,7 +425,7 @@ LINEE GUIDA GENERALI:
 FORMATO RISPOSTA:
 =================
 Per ogni pasto genera un JSON strutturato con ESATTAMENTE questi campi:
-- recipe_name: nome ricetta appetitoso e descrittivo
+- recipe_name: nome ricetta appetitoso e descrittivo (es: "Zuppa di lenticchie e cavolo nero alla toscana", non "Zuppa")
 - ingredients: lista di oggetti [{"nome": "ingrediente", "quantità": "100g"}, ...]
 - instructions: lista di stringhe ["Passo 1...", "Passo 2...", ...]
 - calories: numero intero (calorie totali)
@@ -419,29 +435,79 @@ Per ogni pasto genera un JSON strutturato con ESATTAMENTE questi campi:
 - seasonal_score: numero float 0.0-1.0 (quanto usa ingredienti stagionali)
 - notes: stringa con consigli per conservazione, varianti, meal prep
 
-ESEMPIO JSON:
+LINEE GUIDA RICETTE AUTENTICHE:
+================================
+🇮🇹 **Ricette Italiane Tradizionali Rivisitate**
+- Rispetta le tecniche di cottura tradizionali italiane (soffritto, brasatura, etc)
+- Usa combinazioni di sapori classiche (pomodoro+basilico, rosmarino+aglio, salvia+burro)
+- Rivisita piatti classici in versione salutare (es: carbonara con yogurt greco)
+- Mantieni la struttura dei piatti regionali (zuppe toscane, risotti lombardi, paste siciliane)
+
+🌍 **Ricette Internazionali Autentiche**
+- Rispetta le combinazioni di spezie tipiche (curry indiano, ras el hanout marocchino)
+- Usa tecniche di cottura originali (stir-fry asiatico, slow cooking messicano)
+- Mantieni equilibri di sapori tradizionali (dolce-salato-acido asiatico)
+- Adatta ingredienti difficili con alternative locali stagionali
+
+📖 **Esperienza Culinaria e Coerenza**
+- Ogni ricetta deve avere una logica culinaria solida e testata
+- Tempi di cottura realistici basati su esperienza vera
+- Sequenza di preparazione logica: mise en place → cottura base → assemblaggio → finitura
+- Tecniche appropriate: soffritto per basi, rosolatura per proteine, mantecatura per cremosità
+- Bilanciamento sapori: salato, dolce, acido, amaro, umami
+- Temperature e modalità specifiche (fuoco medio, fiamma bassa, etc)
+
+🥘 **Praticità e Meal Prep**
+- Ricette batch-friendly: si possono preparare in quantità e conservare
+- Istruzioni chiare per conservazione (frigo 3-4 giorni, freezer 2-3 mesi)
+- Suggerimenti per riscaldamento ottimale senza perdere qualità
+- Varianti per diverse occasioni o ingredienti disponibili
+
+⚠️ **Errori da Evitare**
+- ❌ Combinazioni innaturali o fusion senza senso culinario
+- ❌ Tempi di cottura irrealistici (es: "cuocere legumi in 5 minuti")
+- ❌ Ingredienti incompatibili (yogurt in cottura lunga, limone con latte)
+- ❌ Procedure illogiche (spezie aggiunte a fine cottura quando vanno tostate all'inizio)
+- ❌ Quantità sproporzionate (troppo olio, troppe spezie, porzioni irreali)
+- ❌ Nomi generici: NO "Insalata", "Pasta", "Zuppa" → SÌ "Insalata di farro con ceci e rucola", "Penne integrali al pesto di cavolo nero"
+
+ESEMPIO RICETTA AUTENTICA:
 {
-  "recipe_name": "Zuppa di lenticchie e cavolo nero",
+  "recipe_name": "Zuppa di lenticchie e cavolo nero alla toscana",
   "ingredients": [
     {"nome": "lenticchie secche", "quantità": "200g"},
     {"nome": "cavolo nero", "quantità": "150g"},
-    {"nome": "carote", "quantità": "100g"}
+    {"nome": "carote", "quantità": "100g"},
+    {"nome": "sedano", "quantità": "50g"},
+    {"nome": "cipolla", "quantità": "80g"},
+    {"nome": "pomodori pelati", "quantità": "200g"},
+    {"nome": "olio extravergine oliva", "quantità": "2 cucchiai"},
+    {"nome": "aglio", "quantità": "2 spicchi"},
+    {"nome": "rosmarino fresco", "quantità": "1 rametto"},
+    {"nome": "brodo vegetale", "quantità": "1 litro"},
+    {"nome": "sale", "quantità": "q.b."},
+    {"nome": "pepe nero", "quantità": "q.b."}
   ],
   "instructions": [
-    "Ammollare le lenticchie per 2 ore",
-    "Tagliare le verdure a pezzi",
-    "Cuocere tutto in pentola per 30 minuti"
+    "Sciacquare le lenticchie sotto acqua corrente. Se usi lenticchie secche normali, metterle in ammollo 2 ore (le lenticchie rosse non servono ammollo)",
+    "Preparare un soffritto classico: in una pentola capiente scaldare l'olio a fuoco medio, aggiungere cipolla tritata fine, carote e sedano a cubetti piccoli. Cuocere 5-7 minuti mescolando fino a doratura leggera",
+    "Aggiungere aglio tritato e rosmarino spezzettato, far rosolare 1-2 minuti fino a quando profuma (attenzione a non bruciare l'aglio)",
+    "Unire i pomodori pelati schiacciati con una forchetta e far insaporire 3-4 minuti a fuoco medio-alto, mescolando",
+    "Aggiungere le lenticchie scolate e il brodo vegetale caldo. Portare a ebollizione vivace",
+    "Abbassare il fuoco a medio-basso, coprire con coperchio e cuocere 25-30 minuti (20 min per lenticchie rosse)",
+    "A 10 minuti dalla fine cottura, aggiungere il cavolo nero lavato e tagliato a striscioline sottili, mescolare bene",
+    "Assaggiare e aggiustare di sale e pepe. Se troppo denso, aggiungere poco brodo caldo",
+    "Servire ben calda con un filo d'olio extravergine a crudo e, se gradito, crostini di pane integrale"
   ],
-  "calories": 450,
-  "macros": {"proteine": 25, "carboidrati": 65, "grassi": 8},
-  "prep_time": 15,
-  "cooking_time": 30,
-  "seasonal_score": 0.9,
-  "notes": "Si conserva in frigo 3-4 giorni. Ottimo per meal prep."
+  "calories": 420,
+  "macros": {"proteine": 24, "carboidrati": 58, "grassi": 10},
+  "prep_time": 20,
+  "cooking_time": 35,
+  "seasonal_score": 0.95,
+  "notes": "Piatto della tradizione toscana povera, nutriente e completo. Si conserva perfettamente in frigo 4 giorni in contenitore ermetico. Ideale per meal prep: riscaldare a fuoco dolce aggiungendo 2-3 cucchiai di brodo per riportare cremosità. Il sapore migliora il giorno dopo quando i sapori si amalgamano. Variante ribollita: aggiungere 50g di pasta corta integrale (ditalini) negli ultimi 10 minuti. Per versione cremosa: frullare metà zuppa e rimescolare. Freezer: congela benissimo, scongelare in frigo la sera prima."
 }
 
-Sii creativo ma pratico. L'utente vuole mangiare sano senza stress.
-Ricette della tradizione italiana rivisitate in chiave salutare.
+⭐ GENERA RICETTE VERE, TESTATE, AUTENTICHE. Come se fossi uno chef professionista con 20 anni di esperienza in cucina italiana e internazionale. Ogni ricetta deve essere replicabile con successo da chiunque seguendo le tue istruzioni.
 """
 
         return prompt
