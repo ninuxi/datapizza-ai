@@ -78,7 +78,7 @@ def create_llm_client(provider: str, api_key: str | None, model: str, base_url: 
         },
         "ollama": {
             "base_url": "http://localhost:11434/v1",
-            "model": model or "llama3.1:8b",
+            "model": model or "llama3.2:3b",
         },
         "openai-like": {
             "base_url": base_url or "",
@@ -298,14 +298,18 @@ if st.session_state.profile is None:
         
         # Inizializza anche l'agent
         if st.session_state.agent is None:
-            # Leggi preferenze provider da sessione o env (fallback Google)
-            provider = st.session_state.get("llm_provider", "google")
-            model = st.session_state.get("llm_model", "gemini-2.0-flash-exp")
-            base_url = st.session_state.get("llm_base_url", None)
+            # Leggi preferenze provider da sessione (fallback Ollama per essere gratuito di default)
+            provider = st.session_state.get("llm_provider", "ollama")
+            model = st.session_state.get("llm_model", "llama3.2:3b")
+            base_url = st.session_state.get("llm_base_url", "http://localhost:11434/v1")
             api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
             if api_key or provider == "ollama":
-                client = create_llm_client(provider, api_key, model or "", base_url)
-                st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+                try:
+                    client = create_llm_client(provider, api_key, model or "", base_url)
+                    st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+                except Exception as e:
+                    st.error(f"⚠️ Errore inizializzazione agent con provider '{provider}': {e}")
+                    st.info("💡 Controlla la configurazione nella sidebar o ricarica la pagina.")
     except ImportError:
         pass  # Se profile_antonio non esiste, lascia che l'utente lo configuri manualmente
 
@@ -317,18 +321,18 @@ with st.sidebar:
     st.subheader("🤖 Modello LLM")
     provider = st.selectbox(
         "Provider",
-        ["google", "openrouter", "groq", "deepseek", "together", "ollama"],
-        index=["google", "openrouter", "groq", "deepseek", "together", "ollama"].index(st.session_state.get("llm_provider", "google"))
+        ["ollama", "google", "openrouter", "groq", "deepseek", "together"],
+        index=["ollama", "google", "openrouter", "groq", "deepseek", "together"].index(st.session_state.get("llm_provider", "ollama"))
     )
     st.session_state.llm_provider = provider
 
     defaults = {
+        "ollama": {"model": "llama3.2:3b", "base_url": "http://localhost:11434/v1"},
         "google": {"model": "gemini-2.0-flash-exp", "base_url": ""},
         "openrouter": {"model": "meta-llama/llama-3.1-8b-instruct:free", "base_url": "https://openrouter.ai/api/v1"},
         "groq": {"model": "llama-3.1-8b-instant", "base_url": "https://api.groq.com/openai/v1"},
         "deepseek": {"model": "deepseek-chat", "base_url": "https://api.deepseek.com"},
         "together": {"model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "base_url": "https://api.together.xyz/v1"},
-        "ollama": {"model": "llama3.1:8b", "base_url": "http://localhost:11434/v1"},
     }
     def_val = defaults.get(provider, defaults["google"]) 
     model = st.text_input("Modello", value=st.session_state.get("llm_model", def_val["model"]))
@@ -449,22 +453,25 @@ if page == "🏠 Home":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("📅 Genera Piano Oggi", type="primary", use_container_width=True):
-                with st.spinner("Generando piano giornaliero..."):
-                    try:
-                        today = datetime.now().strftime("%Y-%m-%d")
-                        weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
-                        is_workout = weekday_it in (st.session_state.profile.workout_days or [])
-                        plan = st.session_state.agent.generate_daily_plan(today, is_workout)
-                        st.session_state.current_plan = plan
-                        st.success("✅ Piano generato!")
-                        st.rerun()
-                    except Exception as e:
-                        # Cerca messaggio chiave API scaduta
-                        msg = str(e)
-                        if "API key expired" in msg or "API_KEY_INVALID" in msg:
-                            st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
-                        else:
-                            st.error(f"Errore nella generazione del piano: {e}")
+                if st.session_state.agent is None:
+                    st.error("❌ Agent non inizializzato. Controlla la configurazione del provider e ricarica la pagina.")
+                else:
+                    with st.spinner("Generando piano giornaliero..."):
+                        try:
+                            today = datetime.now().strftime("%Y-%m-%d")
+                            weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
+                            is_workout = weekday_it in (st.session_state.profile.workout_days or [])
+                            plan = st.session_state.agent.generate_daily_plan(today, is_workout)
+                            st.session_state.current_plan = plan
+                            st.success("✅ Piano generato!")
+                            st.rerun()
+                        except Exception as e:
+                            # Cerca messaggio chiave API scaduta
+                            msg = str(e)
+                            if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                                st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                            else:
+                                st.error(f"Errore nella generazione del piano: {e}")
         
         with col2:
             if st.button("📆 Genera Piano Settimana", type="secondary", use_container_width=True):
