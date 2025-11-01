@@ -510,10 +510,9 @@ Requisiti specifici per {meal_type.value}:
         
         context += "\nGenera SOLO il JSON della ricetta, senza commenti aggiuntivi."
         
-        # Genera con AI
-        response = self.client.generate_content(
-            [self._build_system_prompt(), context]
-        )
+        # Genera con AI usando invoke()
+        prompt = f"{self._build_system_prompt()}\n\n{context}"
+        response = self.client.invoke(input=prompt, max_tokens=2000)
         
         # Parse risposta
         try:
@@ -618,7 +617,7 @@ Requisiti specifici per {meal_type.value}:
         
         return weekly_plans
     
-    def get_meal_suggestions(self, meal_type: MealType, preferences: Dict = None) -> List[str]:
+    def get_meal_suggestions(self, meal_type: MealType, preferences: Dict | None = None) -> List[str]:
         """
         Ottieni suggerimenti veloci per un tipo di pasto.
         
@@ -635,9 +634,9 @@ Preferenze extra: {preferences or 'nessuna'}
 
 Risposta in formato: lista semplice di nomi ricette, uno per riga."""
 
-        response = self.client.generate_content(
-            [self._build_system_prompt(), context]
-        )
+        # Usa invoke() invece di generate_content()
+        prompt = f"{self._build_system_prompt()}\n\n{context}"
+        response = self.client.invoke(input=prompt, max_tokens=500)
         
         suggestions = [line.strip("- ").strip() for line in response.text.split("\n") if line.strip()]
         return suggestions[:5]
