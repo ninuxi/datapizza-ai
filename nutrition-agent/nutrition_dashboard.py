@@ -231,6 +231,23 @@ if 'agent' not in st.session_state:
     st.session_state.agent = None
 if 'current_plan' not in st.session_state:
     st.session_state.current_plan = None
+if 'weekly_plan' not in st.session_state:
+    st.session_state.weekly_plan = None
+
+# Auto-carica profilo Antonio se non c'è profilo
+if st.session_state.profile is None:
+    try:
+        from profile_antonio import create_antonio_profile
+        st.session_state.profile = create_antonio_profile()
+        
+        # Inizializza anche l'agent
+        if st.session_state.agent is None:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if api_key:
+                client = GoogleClient(model="gemini-2.0-flash-exp", api_key=api_key)
+                st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+    except ImportError:
+        pass  # Se profile_antonio non esiste, lascia che l'utente lo configuri manualmente
 
 # Sidebar
 with st.sidebar:
@@ -332,120 +349,194 @@ if page == "🏠 Home":
 elif page == "👤 Profilo":
     st.header("👤 Configurazione Profilo")
     
-    tab1, tab2 = st.tabs(["✏️ Nuovo Profilo", "📋 Profilo Esistente"])
+    # Mostra profilo Antonio caricato
+    if st.session_state.profile and st.session_state.profile.name == "Antonio":
+        st.success("✅ **Profilo Antonio caricato automaticamente!**")
+        
+        with st.expander("📋 Visualizza Profilo Completo", expanded=False):
+            profile = st.session_state.profile
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("👤 Nome", profile.name)
+                st.metric("🎂 Età", f"{profile.age} anni")
+                st.metric("⚖️ Peso", f"{profile.weight} kg")
+            with col2:
+                st.metric("📏 Altezza", f"{profile.height} cm")
+                st.metric("💪 Attività", profile.activity_level.value)
+                st.metric("🎯 Obiettivo", profile.dietary_goal.value)
+            with col3:
+                st.metric("🥗 Cibi preferiti", len(profile.preferred_foods))
+                st.metric("🚫 Cibi evitati", len(profile.disliked_foods))
+                st.metric("📅 Giorni workout", len(profile.workout_days) if profile.workout_days else 0)
+            
+            st.markdown("---")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**🥗 Cibi Preferiti (Top 20)**")
+                for food in profile.preferred_foods[:20]:
+                    st.markdown(f"- {food}")
+                if len(profile.preferred_foods) > 20:
+                    st.markdown(f"*...e altri {len(profile.preferred_foods)-20}*")
+            
+            with col2:
+                st.markdown("**🚫 Cibi da Evitare**")
+                for food in profile.disliked_foods:
+                    st.markdown(f"- ❌ {food}")
+            
+            st.markdown("---")
+            st.markdown("**📅 Giorni Allenamento**")
+            if profile.workout_days:
+                st.write(", ".join(profile.workout_days))
+            else:
+                st.write("Nessun giorno configurato")
+            
+            st.markdown("**🔧 Altre Impostazioni**")
+            st.write(f"- Vegetariano: {'✅' if profile.vegetarian else '❌'}")
+            st.write(f"- Vegano: {'✅' if profile.vegan else '❌'}")
+            st.write(f"- Senza glutine: {'✅' if profile.gluten_free else '❌'}")
+            st.write(f"- Senza latticini: {'✅' if profile.dairy_free else '❌'}")
+            st.write(f"- Meal prep: {'✅' if profile.meal_prep else '❌'}")
+        
+        st.info("💡 **Questo è il tuo profilo preset personale!** Include tutte le tue preferenze: NO frutta, NO pollo/volatili, solo cereali integrali, cibi a calorie negative, enfasi sulle uova, ecc.")
+        
+        if st.button("🔄 Resetta e Crea Nuovo Profilo"):
+            st.session_state.profile = None
+            st.session_state.agent = None
+            st.rerun()
     
-    with tab1:
-        st.subheader("Crea il tuo profilo personalizzato")
+    # Se non c'è profilo o è stato resettato
+    if not st.session_state.profile or st.session_state.profile.name != "Antonio":
+        tab1, tab2 = st.tabs(["✏️ Nuovo Profilo", "📥 Carica Profilo Antonio"])
         
-        col1, col2 = st.columns(2)
+        with tab2:
+            st.markdown("### 📥 Carica Profilo Preset Antonio")
+            st.markdown("""
+            Questo profilo include:
+            - ✅ Età: 47 anni, Peso: 74kg, Altezza: 173cm
+            - 🎯 Obiettivo: Dimagrimento + massa muscolare
+            - 🥗 60+ cibi preferiti (verdure, legumi, uova, cereali integrali)
+            - ❌ NO frutta, NO pollo/volatili, NO cereali raffinati
+            - � Cibi a calorie negative (sedano, cetrioli, zenzero, etc)
+            - 🥚 Enfasi sulle UOVA come fonte proteica principale
+            - 💪 Allenamento: 3-4 giorni/settimana (circuiti intensi)
+            - 🍳 Meal prep: Batch cooking legumi e uova sode
+            """)
+            
+            if st.button("✅ Carica Profilo Antonio", type="primary"):
+                try:
+                    from profile_antonio import create_antonio_profile
+                    st.session_state.profile = create_antonio_profile()
+                    
+                    api_key = os.getenv("GOOGLE_API_KEY")
+                    client = GoogleClient(model="gemini-2.0-flash-exp", api_key=api_key)
+                    st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+                    
+                    st.success("✅ Profilo Antonio caricato con successo!")
+                    st.balloons()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore nel caricamento: {e}")
         
-        with col1:
-            name = st.text_input("Nome", value="Antonio")
-            age = st.number_input("Età", min_value=18, max_value=100, value=35)
-            weight = st.number_input("Peso (kg)", min_value=40.0, max_value=200.0, value=75.0, step=0.5)
-            height = st.number_input("Altezza (cm)", min_value=140.0, max_value=220.0, value=175.0, step=1.0)
+        with tab1:
+            st.subheader("Crea il tuo profilo personalizzato")
             
-            activity = st.selectbox(
-                "Livello Attività",
-                [e.value for e in ActivityLevel],
-                index=2
-            )
+            col1, col2 = st.columns(2)
             
-            goal = st.selectbox(
-                "Obiettivo",
-                [e.value for e in DietaryGoal],
-                index=3
-            )
-        
-        with col2:
-            st.markdown("**Preferenze Alimentari**")
-            preferred = st.text_area(
-                "Cibi preferiti (separati da virgola)",
-                value="pollo, riso, verdure, pesce, avocado, noci"
-            )
-            disliked = st.text_area(
-                "Cibi da evitare (separati da virgola)",
-                value="funghi, cozze"
-            )
-            allergies = st.text_input("Allergie", value="")
-            intolerances = st.text_input("Intolleranze", value="")
+            with col1:
+                name = st.text_input("Nome", value="Antonio")
+                age = st.number_input("Età", min_value=18, max_value=100, value=35)
+                weight = st.number_input("Peso (kg)", min_value=40.0, max_value=200.0, value=75.0, step=0.5)
+                height = st.number_input("Altezza (cm)", min_value=140.0, max_value=220.0, value=175.0, step=1.0)
+                
+                activity = st.selectbox(
+                    "Livello Attività",
+                    [e.value for e in ActivityLevel],
+                    index=2
+                )
+                
+                goal = st.selectbox(
+                    "Obiettivo",
+                    [e.value for e in DietaryGoal],
+                    index=3
+                )
             
-            st.markdown("**Restrizioni Dietetiche**")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                vegetarian = st.checkbox("Vegetariano")
-                gluten_free = st.checkbox("Senza glutine")
-            with col_b:
-                vegan = st.checkbox("Vegano")
-                dairy_free = st.checkbox("Senza latticini")
-        
-        st.markdown("**Allenamento**")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            workout_days = st.multiselect(
-                "Giorni allenamento",
-                ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
-                default=["lunedì", "mercoledì", "venerdì"]
-            )
-        with col2:
-            workout_time = st.selectbox("Orario allenamento", ["mattina", "pomeriggio", "sera"], index=1)
-        with col3:
-            meal_prep = st.checkbox("Meal Prep", value=True, help="Prepari pasti in anticipo?")
-        
-        st.markdown("**Altro**")
-        col1, col2 = st.columns(2)
-        with col1:
-            cooking_time = st.selectbox("Tempo disponibile cucina", ["breve", "medio", "lungo"], index=1)
-        with col2:
-            budget = st.selectbox("Budget", ["basso", "medio", "alto"], index=1)
-        
-        if st.button("💾 Salva Profilo", type="primary", use_container_width=True):
-            # Crea profilo
-            profile = UserProfile(
-                name=name,
-                age=age,
-                weight=weight,
-                height=height,
-                activity_level=ActivityLevel(activity),
-                dietary_goal=DietaryGoal(goal),
-                preferred_foods=[f.strip() for f in preferred.split(",")],
-                disliked_foods=[f.strip() for f in disliked.split(",")],
-                allergies=[a.strip() for a in allergies.split(",") if a.strip()],
-                intolerances=[i.strip() for i in intolerances.split(",") if i.strip()],
-                vegetarian=vegetarian,
-                vegan=vegan,
-                gluten_free=gluten_free,
-                dairy_free=dairy_free,
-                workout_days=workout_days,
-                workout_time=workout_time,
-                cooking_time_available=cooking_time,
-                budget_level=budget,
-                meal_prep=meal_prep
-            )
+            with col2:
+                st.markdown("**Preferenze Alimentari**")
+                preferred = st.text_area(
+                    "Cibi preferiti (separati da virgola)",
+                    value="pollo, riso, verdure, pesce, avocado, noci"
+                )
+                disliked = st.text_area(
+                    "Cibi da evitare (separati da virgola)",
+                    value="funghi, cozze"
+                )
+                allergies = st.text_input("Allergie", value="")
+                intolerances = st.text_input("Intolleranze", value="")
+                
+                st.markdown("**Restrizioni Dietetiche**")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    vegetarian = st.checkbox("Vegetariano")
+                    gluten_free = st.checkbox("Senza glutine")
+                with col_b:
+                    vegan = st.checkbox("Vegano")
+                    dairy_free = st.checkbox("Senza latticini")
             
-            # Inizializza agent
-            client = GoogleClient(api_key=api_key, model="gemini-2.0-flash-exp")
-            agent = NutritionAgent(client, profile)
+            st.markdown("**Allenamento**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                workout_days = st.multiselect(
+                    "Giorni allenamento",
+                    ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+                    default=["lunedì", "mercoledì", "venerdì"]
+                )
+            with col2:
+                workout_time = st.selectbox("Orario allenamento", ["mattina", "pomeriggio", "sera"], index=1)
+            with col3:
+                meal_prep = st.checkbox("Meal Prep", value=True, help="Prepari pasti in anticipo?")
             
-            st.session_state.profile = profile
-            st.session_state.agent = agent
+            st.markdown("**Altro**")
+            col1, col2 = st.columns(2)
+            with col1:
+                cooking_time = st.selectbox("Tempo disponibile cucina", ["breve", "medio", "lungo"], index=1)
+            with col2:
+                budget = st.selectbox("Budget", ["basso", "medio", "alto"], index=1)
             
-            st.success("✅ Profilo salvato con successo!")
-            st.balloons()
-    
-    with tab2:
-        if st.session_state.profile:
-            st.json({
-                "nome": st.session_state.profile.name,
-                "età": st.session_state.profile.age,
-                "peso": st.session_state.profile.weight,
-                "altezza": st.session_state.profile.height,
-                "attività": st.session_state.profile.activity_level.value,
-                "obiettivo": st.session_state.profile.dietary_goal.value,
-                "giorni_allenamento": st.session_state.profile.workout_days
-            })
-        else:
-            st.info("Nessun profilo configurato ancora")
+            if st.button("💾 Salva Profilo", type="primary", use_container_width=True):
+                # Crea profilo
+                profile = UserProfile(
+                    name=name,
+                    age=age,
+                    weight=weight,
+                    height=height,
+                    activity_level=ActivityLevel(activity),
+                    dietary_goal=DietaryGoal(goal),
+                    preferred_foods=[f.strip() for f in preferred.split(",")],
+                    disliked_foods=[f.strip() for f in disliked.split(",")],
+                    allergies=[a.strip() for a in allergies.split(",") if a.strip()],
+                    intolerances=[i.strip() for i in intolerances.split(",") if i.strip()],
+                    vegetarian=vegetarian,
+                    vegan=vegan,
+                    gluten_free=gluten_free,
+                    dairy_free=dairy_free,
+                    workout_days=workout_days,
+                    workout_time=workout_time,
+                    cooking_time_available=cooking_time,
+                    budget_level=budget,
+                    meal_prep=meal_prep
+                )
+                
+                # Inizializza agent
+                client = GoogleClient(api_key=api_key, model="gemini-2.0-flash-exp")
+                agent = NutritionAgent(client, profile)
+                
+                st.session_state.profile = profile
+                st.session_state.agent = agent
+                
+                st.success("✅ Profilo salvato con successo!")
+                st.balloons()
 
 # ============================================================================
 # PIANO GIORNALIERO
