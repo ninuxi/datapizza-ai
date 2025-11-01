@@ -39,6 +39,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-core"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-openai-like"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-google"))
 
+# Import clients AFTER adding paths
+from datapizza.clients.google import GoogleClient  # type: ignore
+from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
+
 # Page config
 st.set_page_config(
     page_title="🥗 Nutrition Agent - Verdure & Benessere",
@@ -53,8 +57,6 @@ def create_llm_client(provider: str, api_key: str | None, model: str, base_url: 
     if provider == "google":
         if not api_key:
             raise ValueError("Manca la API key per Google. Inseriscila nella sidebar.")
-        # Lazy import to avoid import errors when package not present
-        from datapizza.clients.google import GoogleClient  # type: ignore
         return GoogleClient(model=model or "gemini-2.0-flash-exp", api_key=api_key)
 
     # OpenAI-compatible providers (free/cheap tiers): OpenRouter, Groq, DeepSeek, Together, Local Ollama
@@ -93,12 +95,10 @@ def create_llm_client(provider: str, api_key: str | None, model: str, base_url: 
 
     # Ollama non richiede API key
     if provider == "ollama":
-        from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
         return OpenAILikeClient(api_key=api_key or "ollama", model=mdl, base_url=base)
 
     if not api_key:
         raise ValueError("Manca la API key per il provider selezionato. Inseriscila nella sidebar.")
-    from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
     return OpenAILikeClient(api_key=api_key, model=mdl, base_url=base)
 
 # Custom CSS - Tema Verdure Stagionali Allegro
@@ -308,11 +308,18 @@ if st.session_state.agent is None and st.session_state.profile is not None:
     
     if api_key or provider == "ollama":
         try:
+            import sys
+            # Debug: mostra i path per verificare che siano corretti
+            # st.info(f"🔍 Debug sys.path: {sys.path[:3]}")
             client = create_llm_client(provider, api_key, model or "", base_url)
             st.session_state.agent = NutritionAgent(client, st.session_state.profile)
             st.success(f"✅ Agent inizializzato con provider: **{provider}** (model: {model})")
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             st.error(f"⚠️ Errore inizializzazione agent con provider '{provider}': {e}")
+            with st.expander("🔍 Dettagli errore completo"):
+                st.code(error_details)
             st.info("💡 Controlla la configurazione nella sidebar o ricarica la pagina.")
     else:
         st.warning(f"⚠️ Provider '{provider}' selezionato ma manca API key. Inseriscila nella sidebar o seleziona Ollama.")
