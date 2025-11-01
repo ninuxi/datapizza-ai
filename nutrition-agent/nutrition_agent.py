@@ -23,9 +23,8 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import json
 
-# Import datapizza AI
-sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-core"))
-from datapizza.clients.google import GoogleClient
+# Import datapizza core Client interface (packages installed in editable mode)
+from datapizza.core.clients import Client
 
 
 class MealType(Enum):
@@ -122,12 +121,12 @@ class NutritionAgent:
     Agente AI per pianificazione nutrizionale personalizzata.
     """
     
-    def __init__(self, google_client: GoogleClient, user_profile: UserProfile, data_dir: str = "data/nutrition"):
+    def __init__(self, google_client: Client, user_profile: UserProfile, data_dir: str = "data/nutrition"):
         """
         Inizializza Nutrition Agent.
         
         Args:
-            google_client: Client Google Gemini
+            google_client: Client LLM compatibile (Google, OpenAI-like, Ollama, ecc.)
             user_profile: Profilo utente con preferenze
             data_dir: Directory per salvare dati
         """
