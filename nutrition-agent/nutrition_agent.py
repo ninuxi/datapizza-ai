@@ -157,19 +157,89 @@ class NutritionAgent:
     
     def _get_seasonal_ingredients(self) -> Dict[str, List[str]]:
         """Restituisce ingredienti di stagione per mese"""
-        # TODO: Espandere con database completo
         seasonal_db = {
             "novembre": {
-                "verdure": ["cavolo", "broccoli", "cavolfiore", "zucca", "carciofi", "spinaci", "radicchio", "finocchi"],
-                "frutta": ["cachi", "melograno", "kiwi", "mele", "pere", "agrumi", "castagne"],
-                "altro": ["funghi", "tartufo", "noci"]
+                "verdure": ["cavolo nero", "cavolo verza", "broccoli", "cavolfiore", "zucca", 
+                           "carciofi", "spinaci", "radicchio rosso", "radicchio trevigiano", 
+                           "finocchi", "porri", "sedano rapa", "barbabietole", "carote", 
+                           "rape", "topinambur", "coste", "cicoria"],
+                "legumi": ["lenticchie", "ceci", "fagioli borlotti", "fagioli cannellini", 
+                          "fagioli neri", "piselli secchi", "fave secche"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa", "grano saraceno", "avena"],
+                "frutta_secca": ["noci", "mandorle", "nocciole", "castagne"],
+                "altro": ["funghi porcini", "funghi champignon", "tartufo"]
             },
             "dicembre": {
-                "verdure": ["cavolo", "broccoli", "cavolfiore", "carciofi", "spinaci", "radicchio", "finocchi"],
-                "frutta": ["arance", "mandarini", "kiwi", "mele", "pere"],
-                "altro": ["funghi", "tartufo", "noci", "castagne"]
+                "verdure": ["cavolo nero", "cavolo verza", "broccoli", "cavolfiore", "carciofi", 
+                           "spinaci", "radicchio", "finocchi", "porri", "sedano rapa", "carote"],
+                "legumi": ["lenticchie", "ceci", "fagioli borlotti", "fagioli cannellini", "piselli secchi"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa", "avena"],
+                "frutta_secca": ["noci", "mandorle", "nocciole", "castagne"],
+                "altro": ["funghi", "tartufo"]
+            },
+            "gennaio": {
+                "verdure": ["cavolo nero", "cavolo cappuccio", "broccoli", "cavolfiore", "carciofi",
+                           "spinaci", "radicchio", "finocchi", "porri", "sedano rapa"],
+                "legumi": ["lenticchie", "ceci", "fagioli", "fave secche"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa", "avena"],
+                "frutta_secca": ["noci", "mandorle", "nocciole"]
+            },
+            "febbraio": {
+                "verdure": ["carciofi", "finocchi", "radicchio", "spinaci", "cicoria", 
+                           "porri", "sedano", "cavolfiore", "cavolo cappuccio"],
+                "legumi": ["lenticchie", "ceci", "fagioli", "fave secche"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"],
+                "frutta_secca": ["mandorle", "noci"]
+            },
+            "marzo": {
+                "verdure": ["carciofi", "asparagi", "agretti", "fave fresche", "piselli freschi",
+                           "spinaci", "radicchio", "lattuga", "rucola"],
+                "legumi": ["fave fresche", "piselli freschi", "ceci", "lenticchie"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"]
+            },
+            "aprile": {
+                "verdure": ["asparagi", "carciofi", "fave fresche", "piselli freschi", "agretti",
+                           "spinaci", "lattuga", "rucola", "ravanelli"],
+                "legumi": ["fave fresche", "piselli freschi", "lenticchie", "ceci"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"]
+            },
+            "maggio": {
+                "verdure": ["asparagi", "fave", "piselli", "zucchine", "pomodori", "melanzane",
+                           "peperoni", "lattuga", "rucola", "ravanelli"],
+                "legumi": ["fave fresche", "piselli freschi", "fagiolini"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"]
+            },
+            "giugno": {
+                "verdure": ["zucchine", "pomodori", "melanzane", "peperoni", "cetrioli",
+                           "fagiolini", "lattuga", "rucola", "basilico"],
+                "legumi": ["fagiolini", "piselli", "lenticchie"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"]
+            },
+            "luglio": {
+                "verdure": ["pomodori", "zucchine", "melanzane", "peperoni", "cetrioli",
+                           "fagiolini", "lattuga", "rucola", "basilico"],
+                "legumi": ["fagiolini", "borlotti freschi"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo"]
+            },
+            "agosto": {
+                "verdure": ["pomodori", "zucchine", "melanzane", "peperoni", "cetrioli",
+                           "fagiolini", "lattuga", "basilico"],
+                "legumi": ["fagioli freschi", "fagiolini"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo"]
+            },
+            "settembre": {
+                "verdure": ["pomodori", "zucchine", "melanzane", "peperoni", "zucca",
+                           "funghi", "spinaci", "bietole", "radicchio"],
+                "legumi": ["fagioli freschi", "lenticchie", "ceci"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"]
+            },
+            "ottobre": {
+                "verdure": ["zucca", "cavolo", "broccoli", "cavolfiore", "spinaci", "bietole",
+                           "radicchio", "funghi", "finocchi"],
+                "legumi": ["lenticchie", "ceci", "fagioli borlotti", "fagioli cannellini"],
+                "cereali_integrali": ["riso integrale", "farro", "orzo", "quinoa"],
+                "altro": ["funghi porcini", "castagne"]
             }
-            # ... altri mesi
         }
         
         current_month = datetime.now().strftime("%B").lower()
@@ -186,6 +256,15 @@ class NutritionAgent:
     
     def _build_system_prompt(self) -> str:
         """Costruisce system prompt personalizzato"""
+        
+        # Carica linee guida specifiche utente se disponibili
+        user_guidelines = None
+        if self.profile.name.lower() == "antonio":
+            try:
+                from profile_antonio import get_nutrition_guidelines_antonio
+                user_guidelines = get_nutrition_guidelines_antonio()
+            except ImportError:
+                pass
         
         dietary_restrictions = []
         if self.profile.vegetarian:
@@ -233,9 +312,87 @@ Meal prep: {'Sì' if self.profile.meal_prep else 'No'}
 
 INGREDIENTI DI STAGIONE (mese corrente):
 =========================================={seasonal_text}
+"""
 
-LINEE GUIDA:
-============
+        # Aggiungi linee guida personalizzate se disponibili
+        if user_guidelines:
+            prompt += f"""
+FILOSOFIA ALIMENTARE UTENTE:
+============================
+{user_guidelines['philosophy']}
+
+PRIORITÀ ASSOLUTE (da rispettare sempre):
+==========================================
+"""
+            for i, priority in enumerate(user_guidelines['priorities'], 1):
+                prompt += f"{i}. {priority}\n"
+            
+            prompt += f"""
+TARGET MACRONUTRIENTI GIORNALIERI:
+===================================
+{user_guidelines['macros_target']['note']}
+Calorie: {user_guidelines['macros_target']['calories_range']}
+Proteine: {user_guidelines['macros_target']['protein_target']}
+Carboidrati: {user_guidelines['macros_target']['carbs']}
+Grassi: {user_guidelines['macros_target']['fats']}
+
+STRUTTURA PASTI IDEALE:
+========================
+Colazione: {user_guidelines['meal_structure']['colazione']}
+Pranzo: {user_guidelines['meal_structure']['pranzo']}
+Cena: {user_guidelines['meal_structure']['cena']}
+Spuntini: {user_guidelines['meal_structure']['spuntini']}
+
+MEAL PREP E BATCH COOKING:
+===========================
+L'utente ama il meal prep. Suggerisci ricette che permettano:
+"""
+            for strategy in user_guidelines['batch_cooking']:
+                prompt += f"- {strategy}\n"
+            
+            prompt += f"""
+NUTRIZIONE PRE/POST WORKOUT:
+=============================
+Pre-workout: {user_guidelines['workout_nutrition']['pre_workout']}
+Post-workout: {user_guidelines['workout_nutrition']['post_workout']}
+Circuiti intensi: {user_guidelines['workout_nutrition']['circuiti_intensi']}
+
+FOCUS STAGIONALE:
+=================
+Ingredienti prioritari questo mese:
+"""
+            # seasonal_focus è un dict con chiavi come "novembre"
+            for month_key, items in user_guidelines['seasonal_focus'].items():
+                for item_desc in items:
+                    prompt += f"- {item_desc}\n"
+            
+            prompt += f"""
+BUDGET E RISPARMIO:
+===================
+"""
+            for tip in user_guidelines['budget_tips']:
+                prompt += f"- {tip}\n"
+            
+            prompt += f"""
+⚠️  CIBI DA EVITARE ASSOLUTAMENTE:
+===================================
+"""
+            for avoid in user_guidelines['avoid_completely']:
+                prompt += f"❌ {avoid}\n"
+            
+            prompt += """
+IMPORTANTE: L'utente NON mangia frutta fresca di nessun tipo. 
+Quando servirebbero dolcificanti naturali o fibre dolci, usa:
+- Frutta secca (datteri, fichi secchi) in piccole quantità
+- Verdure dolci (carote, zucca, barbabietole)
+- Miele (con moderazione)
+Mai suggerire frutta fresca come spuntino o dessert!
+"""
+        else:
+            # Linee guida generiche
+            prompt += """
+LINEE GUIDA GENERALI:
+=====================
 1. Prioritizza ingredienti di stagione e locali
 2. Rispetta tutte le restrizioni e preferenze
 3. Adatta calorie/macros all'attività della giornata
@@ -246,21 +403,25 @@ LINEE GUIDA:
 8. Varia i pasti per evitare monotonia
 9. Considera il budget dell'utente
 10. Se meal prep: suggerisci ricette batch-friendly
+"""
 
+        prompt += """
 FORMATO RISPOSTA:
 =================
 Per ogni pasto genera un JSON strutturato con:
-- recipe_name: nome ricetta
-- ingredients: lista ingredienti con quantità
-- instructions: step by step
-- calories: calorie totali
-- macros: proteine/carboidrati/grassi in grammi
+- recipe_name: nome ricetta appetitoso e descrittivo
+- ingredients: lista ingredienti con quantità precise
+- instructions: step by step chiari e numerati
+- calories: calorie totali stimate
+- macros: {"protein": X, "carbs": Y, "fats": Z} in grammi
 - prep_time: minuti preparazione
 - cooking_time: minuti cottura
-- seasonal_score: 0-1 (quanto usa ingredienti stagionali)
-- notes: consigli extra
+- seasonal_score: 0.0-1.0 (quanto usa ingredienti stagionali)
+- notes: consigli per conservazione, varianti, meal prep
 
-Sii creativo ma pratico. L'utente vuole mangiare sano senza stress."""
+Sii creativo ma pratico. L'utente vuole mangiare sano senza stress.
+Ricette della tradizione italiana rivisitate in chiave salutare.
+"""
 
         return prompt
     
