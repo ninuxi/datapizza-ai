@@ -295,23 +295,27 @@ if st.session_state.profile is None:
     try:
         from profile_antonio import create_antonio_profile
         st.session_state.profile = create_antonio_profile()
-        
-        # Inizializza anche l'agent
-        if st.session_state.agent is None:
-            # Leggi preferenze provider da sessione (fallback Ollama per essere gratuito di default)
-            provider = st.session_state.get("llm_provider", "ollama")
-            model = st.session_state.get("llm_model", "llama3.2:3b")
-            base_url = st.session_state.get("llm_base_url", "http://localhost:11434/v1")
-            api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
-            if api_key or provider == "ollama":
-                try:
-                    client = create_llm_client(provider, api_key, model or "", base_url)
-                    st.session_state.agent = NutritionAgent(client, st.session_state.profile)
-                except Exception as e:
-                    st.error(f"⚠️ Errore inizializzazione agent con provider '{provider}': {e}")
-                    st.info("💡 Controlla la configurazione nella sidebar o ricarica la pagina.")
     except ImportError:
         pass  # Se profile_antonio non esiste, lascia che l'utente lo configuri manualmente
+
+# Inizializza agent se manca ma c'è un profilo
+if st.session_state.agent is None and st.session_state.profile is not None:
+    # Leggi preferenze provider da sessione (fallback Ollama per essere gratuito di default)
+    provider = st.session_state.get("llm_provider", "ollama")
+    model = st.session_state.get("llm_model", "llama3.2:3b")
+    base_url = st.session_state.get("llm_base_url", "http://localhost:11434/v1")
+    api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+    
+    if api_key or provider == "ollama":
+        try:
+            client = create_llm_client(provider, api_key, model or "", base_url)
+            st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+            st.success(f"✅ Agent inizializzato con provider: **{provider}** (model: {model})")
+        except Exception as e:
+            st.error(f"⚠️ Errore inizializzazione agent con provider '{provider}': {e}")
+            st.info("💡 Controlla la configurazione nella sidebar o ricarica la pagina.")
+    else:
+        st.warning(f"⚠️ Provider '{provider}' selezionato ma manca API key. Inseriscila nella sidebar o seleziona Ollama.")
 
 # Sidebar
 with st.sidebar:
