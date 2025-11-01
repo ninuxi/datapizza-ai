@@ -39,47 +39,190 @@ from datapizza.clients.google import GoogleClient
 
 # Page config
 st.set_page_config(
-    page_title="🥗 Nutrition Agent",
-    page_icon="🥗",
+    page_title="🥗 Nutrition Agent - Verdure & Benessere",
+    page_icon="�",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS - Tema Verdure Stagionali Allegro
 st.markdown("""
 <style>
+    /* Sfondo generale con pattern verdure */
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8f5e9 100%);
+    }
+    
+    /* Header principale - Colori verdure di stagione */
     .main-header {
-        font-size: 2.5rem;
+        font-size: 3rem;
         font-weight: bold;
-        background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+        background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 30%, #66BB6A 60%, #81C784 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
         margin-bottom: 1rem;
-    }
-    .meal-card {
-        background: #f8f9fa;
-        padding: 1.5rem;
-        border-left: 4px solid #4CAF50;
-        margin: 1rem 0;
-        border-radius: 8px;
-    }
-    .workout-day {
-        border-left-color: #FF5722;
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
         padding: 1rem;
-        border-radius: 8px;
+        animation: pulse 3s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
+    }
+    
+    /* Card pasti - Colori vegetali */
+    .meal-card {
+        background: linear-gradient(135deg, #f1f8e9 0%, #dcedc8 100%);
+        padding: 1.5rem;
+        border-left: 5px solid #689F38;
+        margin: 1rem 0;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(104, 159, 56, 0.1);
+        transition: transform 0.2s;
+    }
+    
+    .meal-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(104, 159, 56, 0.2);
+    }
+    
+    /* Card giorno workout - Colore arancio/rosso peperoni */
+    .workout-day {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        border-left-color: #FF6F00;
+    }
+    
+    /* Metric cards - Palette verdure */
+    .metric-card {
+        background: linear-gradient(135deg, #66BB6A 0%, #4CAF50 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
         text-align: center;
+        box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+    }
+    
+    .metric-card-alt {
+        background: linear-gradient(135deg, #FFA726 0%, #FF7043 100%);
+    }
+    
+    .metric-card-protein {
+        background: linear-gradient(135deg, #8D6E63 0%, #6D4C41 100%);
+    }
+    
+    /* Sidebar - Tema foglie verdi */
+    .css-1d391kg, [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #a5d6a7 0%, #c8e6c9 100%);
+    }
+    
+    /* Bottoni - Colori vivaci verdure */
+    .stButton > button {
+        background: linear-gradient(135deg, #66BB6A 0%, #4CAF50 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: bold;
+        transition: all 0.3s;
+    }
+    
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        transform: scale(1.05);
+    }
+    
+    /* Tab - Colori stagionali */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #e8f5e9;
+        border-radius: 8px;
+        padding: 0.5rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #2E7D32;
+        font-weight: 600;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #66BB6A 0%, #4CAF50 100%);
+        color: white !important;
+        border-radius: 6px;
+    }
+    
+    /* Expander - Tema verdure */
+    .streamlit-expanderHeader {
+        background: linear-gradient(90deg, #c8e6c9 0%, #a5d6a7 100%);
+        border-radius: 8px;
+        color: #1B5E20;
+        font-weight: 600;
+    }
+    
+    /* Success/Info boxes - Colori vegetali */
+    .stSuccess {
+        background-color: #e8f5e9;
+        border-left: 4px solid #4CAF50;
+    }
+    
+    .stInfo {
+        background-color: #fff3e0;
+        border-left: 4px solid #FF9800;
+    }
+    
+    /* Emoji decorativi */
+    .veggie-emoji {
+        font-size: 2rem;
+        animation: bounce 2s ease-in-out infinite;
+    }
+    
+    @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.markdown('<div class="main-header">🥗 Nutrition Agent</div>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #666;">Il tuo assistente AI per alimentazione sana e personalizzata</p>', unsafe_allow_html=True)
+# Header con emoji verdure animate
+st.markdown('''
+<div style="text-align: center; margin-bottom: 2rem;">
+    <span class="veggie-emoji">🥬</span>
+    <span class="veggie-emoji">🥦</span>
+    <span class="veggie-emoji">🌶️</span>
+    <span class="veggie-emoji">🥕</span>
+    <span class="veggie-emoji">🍆</span>
+    <span class="veggie-emoji">🥒</span>
+</div>
+''', unsafe_allow_html=True)
+
+st.markdown('<div class="main-header">🥗 Nutrition Agent - Il Tuo Nutrizionista Verde</div>', unsafe_allow_html=True)
+st.markdown('<p style="text-align: center; color: #558B2F; font-size: 1.2rem; margin-top: -1rem;">🌱 Alimentazione Sana, Stagionale e Sostenibile 🌱</p>', unsafe_allow_html=True)
+
+# Emoji verdure di stagione per mese
+seasonal_emojis = {
+    "gennaio": "❄️ 🥬 🥦 🫑 🧅",
+    "febbraio": "❄️ 🥬 🫑 🧄 🥕",
+    "marzo": "🌸 🥬 🥦 🫛 🥕",
+    "aprile": "🌸 🥬 🫛 🥕 🌶️",
+    "maggio": "🌻 🥒 🍅 🥬 🫛",
+    "giugno": "☀️ 🍅 🥒 🫑 🥬",
+    "luglio": "☀️ 🍅 🥒 🍆 🫑",
+    "agosto": "☀️ 🍅 🥒 🍆 🫑",
+    "settembre": "🍂 🍅 🍆 🫑 🥦",
+    "ottobre": "🍂 🎃 🥦 🥬 🍄",
+    "novembre": "🍂 🎃 🥦 🥬 🍄",
+    "dicembre": "❄️ 🥦 🥬 🫑 🎄"
+}
+current_month = datetime.now().strftime("%B").lower()
+month_map = {
+    "january": "gennaio", "february": "febbraio", "march": "marzo",
+    "april": "aprile", "may": "maggio", "june": "giugno",
+    "july": "luglio", "august": "agosto", "september": "settembre",
+    "october": "ottobre", "november": "novembre", "december": "dicembre"
+}
+current_month_it = month_map.get(current_month, "novembre")
+st.markdown(f'<p style="text-align: center; font-size: 1.5rem;">{seasonal_emojis.get(current_month_it, "🥬 🥦 🥕")}</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="text-align: center; color: #666;">🍽️ Il tuo assistente AI per alimentazione sana e personalizzata - Stagione: {current_month_it.title()}</p>', unsafe_allow_html=True)
 
 # Initialize session state
 if 'profile' not in st.session_state:
@@ -108,7 +251,7 @@ with st.sidebar:
     page = st.radio(
         "Seleziona sezione:",
         ["🏠 Home", "👤 Profilo", "📅 Piano Giornaliero", "📆 Piano Settimanale", 
-         "🔍 Cerca Ricette", "📊 Analisi", "⚙️ Impostazioni"],
+         "🔍 Cerca Ricette", "⏱️ Tabata Timer", "📊 Analisi", "⚙️ Impostazioni"],
         label_visibility="collapsed"
     )
     
@@ -495,6 +638,159 @@ elif page == "🔍 Cerca Ricette":
                 
                 for i, recipe in enumerate(suggestions, 1):
                     st.markdown(f"{i}. **{recipe}**")
+
+# ============================================================================
+# TABATA TIMER - ALLENAMENTO
+# ============================================================================
+elif page == "⏱️ Tabata Timer":
+    st.header("⏱️ Tabata Timer - Allenamento")
+    
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%); 
+                padding: 2rem; border-radius: 12px; color: white; margin-bottom: 2rem;">
+        <h2 style="margin: 0; text-align: center;">💪 Il Tuo Timer per Circuiti Intensi</h2>
+        <p style="text-align: center; margin: 0.5rem 0 0 0; opacity: 0.9;">
+            Allenamento ad alta intensità sincronizzato con la tua nutrizione
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Informazioni sull'allenamento dell'utente
+    if st.session_state.profile:
+        st.markdown("### 🎯 Il Tuo Programma")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("📅 Frequenza", "3-4 giorni/settimana")
+        with col2:
+            st.metric("⏱️ Durata", "30 min circuito")
+        with col3:
+            st.metric("💪 Tipo", "Circuiti + Calisthenics")
+        
+        st.info("🥗 **Nutrizione Pre-Workout**: Carboidrati integrali (riso, farro) 1-2h prima")
+        st.success("🥚 **Nutrizione Post-Workout**: Proteine (legumi/uova/tofu) + carboidrati integrali")
+    
+    st.markdown("---")
+    
+    # Opzioni di accesso al timer
+    st.markdown("### 🚀 Scegli come Allenarti")
+    
+    tab1, tab2, tab3 = st.tabs(["🌐 Web Timer", "🐍 Python Timer", "📱 App Mobile"])
+    
+    with tab1:
+        st.markdown("""
+        ### 🌐 Timer Online (Consigliato)
+        
+        Timer Tabata completo e professionale con:
+        - ✨ Design moderno ottimizzato per mobile
+        - 🔊 Sintesi vocale per countdown
+        - 📱 Layout responsive
+        - 🎯 Preset rapidi (20/10, 30/15, 40/20)
+        - 💾 Salvataggio preset personalizzati
+        - 📅 Calendario allenamenti con tracking
+        - 📲 Installabile come PWA (funziona offline!)
+        """)
+        
+        st.markdown("""
+        <div style="text-align: center; margin: 2rem 0;">
+            <a href="https://ninuxi.github.io/tabata-timer/" target="_blank">
+                <button style="background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
+                               color: white; border: none; padding: 1rem 3rem;
+                               font-size: 1.2rem; font-weight: bold; border-radius: 12px;
+                               cursor: pointer; box-shadow: 0 4px 12px rgba(255,107,107,0.4);">
+                    🚀 Apri Timer Web
+                </button>
+            </a>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("**💡 Tip**: Aggiungi alla Home del tuo smartphone per accesso rapido!")
+    
+    with tab2:
+        st.markdown("""
+        ### 🐍 Timer Python
+        
+        Versioni desktop per chi preferisce lavorare da terminale:
+        
+        **1️⃣ Timer Classico** (`tabata_fisso.py`)
+        - Impostazioni predefinite: 20s lavoro / 10s recupero / 8 round
+        - Segnali audio
+        - Compatibile Windows/Mac/Linux
+        
+        **2️⃣ Timer Personalizzabile** (`tabata_personalizzabile.py`)
+        - Personalizzazione completa
+        - Sintesi vocale
+        - Beep differenziati
+        """)
+        
+        st.code("""
+# Timer classico
+cd nutrition-agent/tabata-timer-main
+python tabata_fisso.py
+
+# Timer personalizzabile
+python tabata_personalizzabile.py
+        """, language="bash")
+        
+        if st.button("📂 Apri cartella Tabata Timer"):
+            import subprocess
+            import platform
+            tabata_path = Path(__file__).parent / "tabata-timer-main"
+            if platform.system() == "Darwin":  # macOS
+                subprocess.run(["open", str(tabata_path)])
+            elif platform.system() == "Windows":
+                subprocess.run(["explorer", str(tabata_path)])
+            else:  # Linux
+                subprocess.run(["xdg-open", str(tabata_path)])
+    
+    with tab3:
+        st.markdown("""
+        ### 📱 App PWA (Progressive Web App)
+        
+        Installa il timer come app sul tuo smartphone:
+        
+        **iPhone/iPad:**
+        1. Apri https://ninuxi.github.io/tabata-timer/ in Safari
+        2. Tap su icona "Condividi" (quadrato con freccia)
+        3. Scorri e tap "Aggiungi a Home"
+        4. Conferma - l'app sarà nella tua Home!
+        
+        **Android:**
+        1. Apri https://ninuxi.github.io/tabata-timer/ in Chrome
+        2. Tap menu (3 puntini)
+        3. Tap "Installa app" o "Aggiungi a Home"
+        4. Conferma
+        
+        **✨ Vantaggi PWA:**
+        - 📲 Icona sulla Home come app nativa
+        - 🚀 Apertura istantanea
+        - 📡 Funziona offline
+        - 💾 Salva i tuoi preset
+        - 📅 Tracking allenamenti
+        """)
+        
+        st.image("https://raw.githubusercontent.com/ninuxi/tabata-timer/main/icon-192.svg", width=150)
+    
+    st.markdown("---")
+    
+    # Sincronizzazione con nutrizione
+    st.markdown("### 🔄 Sincronizzazione Allenamento-Nutrizione")
+    
+    st.markdown("""
+    Il tuo piano nutrizionale si adatta automaticamente ai giorni di allenamento:
+    
+    | Giorni Allenamento | Giorni Riposo |
+    |-------------------|---------------|
+    | 🔼 **+10-15% calorie** | 📊 Calorie base |
+    | 💪 **+20-30g proteine** | 🥗 Proteine standard |
+    | 🍚 **+carboidrati integrali** | ⚖️ Bilanciato |
+    | ⚡ Pre: riso/farro | 🌿 Focus verdure |
+    | 🥚 Post: uova/legumi | 🥗 Pasti leggeri |
+    """)
+    
+    if st.session_state.profile and st.session_state.profile.workout_days:
+        giorni = ", ".join(st.session_state.profile.workout_days)
+        st.success(f"✅ Giorni allenamento configurati: **{giorni}**")
+        st.info("💡 I piani giornalieri generati riconosceranno automaticamente questi giorni e adatteranno le ricette!")
 
 # ============================================================================
 # ANALISI

@@ -52,27 +52,36 @@ def create_antonio_profile() -> UserProfile:
         
         # Cibi amati
         preferred_foods=[
-            # Verdure (stagionali)
+            # Verdure (stagionali) - molte a calorie negative
             "verdure di stagione", "verdure a foglia verde", "broccoli", "cavolfiore", 
             "zucca", "carciofi", "spinaci", "radicchio", "finocchi", "pomodori",
-            "melanzane", "zucchine", "peperoni", "cavolo nero",
+            "melanzane", "zucchine", "peperoni", "cavolo nero", "sedano", "cetrioli",
+            "asparagi", "lattuga", "rucola", "cicoria", "bietole", "rape",
+            
+            # Cibi a calorie negative (termogenici)
+            "sedano", "cetrioli", "ravanelli", "lattuga", "spinaci", "asparagi",
+            "cavolfiore", "broccoli", "pomodori", "zucchine", "peperoni",
+            "cipolle", "aglio", "zenzero", "peperoncino",
             
             # Legumi (base alimentazione)
             "legumi", "lenticchie", "ceci", "fagioli", "fagioli neri", 
-            "fagioli borlotti", "piselli", "fave", "lupini",
+            "fagioli borlotti", "piselli", "fave", "lupini", "soia", "edamame",
             
             # Cereali integrali
             "riso integrale", "pasta integrale", "pane integrale", 
-            "quinoa", "farro", "orzo", "avena integrale", "bulgur",
+            "quinoa", "farro", "orzo", "avena integrale", "bulgur", "miglio",
             
-            # Proteine
-            "uova", "tofu", "tempeh", "seitan",  # Flexitariano
+            # Proteine (UOVA molto importanti!)
+            "uova", "uova biologiche", "uova sode", "frittata", "omelette",
+            "tofu", "tempeh", "seitan",  # Flexitariano
             
             # Colazione
-            "yogurt", "kefir", "tahina", "miele", "frutta secca", "noci", "mandorle",
+            "yogurt", "yogurt greco", "kefir", "tahina", "miele", 
+            "frutta secca", "noci", "mandorle", "nocciole", "pistacchi",
             
             # Grassi sani
             "olio extravergine oliva", "avocado", "semi di lino", "semi di chia",
+            "semi di zucca", "semi di girasole",
             
             # Occasionalmente
             "pesce" # (ma poco per costo)
@@ -125,13 +134,15 @@ def get_nutrition_guidelines_antonio() -> dict:
         "philosophy": "Flexitariano - pochissima carne, focus vegetali",
         
         "priorities": [
-            "Verdure di stagione (base di ogni pasto)",
+            "Verdure di stagione (base di ogni pasto, molte a calorie negative)",
             "Legumi come fonte proteica principale",
+            "UOVA: fonte proteica economica ed eccellente (consumo frequente)",
+            "Cibi termogenici: sedano, cetrioli, zenzero, peperoncino, aglio",
             "Cereali solo integrali (mai raffinati)",
-            "Meal prep friendly (batch cooking legumi)",
+            "Meal prep friendly (batch cooking legumi e uova sode)",
             "NO frutta (sostituti: verdure, frutta secca)",
-            "Colazione: yogurt/kefir + pane + tahina + miele",
-            "Proteine: legumi > uova > tofu/seitan > pesce occasionale",
+            "Colazione: yogurt/kefir + pane + tahina + miele + UOVA",
+            "Proteine: legumi > UOVA > tofu/seitan > pesce occasionale",
             "NO pollo, tacchino, volatili"
         ],
         
@@ -152,8 +163,9 @@ def get_nutrition_guidelines_antonio() -> dict:
         
         "batch_cooking": [
             "Legumi: Bollire 500g-1kg alla volta, conservare in frigo 3-4 giorni",
+            "UOVA SODE: Preparare 6-10 uova sode, conservare in frigo per spuntini veloci",
             "Cereali: Cuocere riso/farro/quinoa in batch",
-            "Verdure: Prep verdure crude già tagliate",
+            "Verdure: Prep verdure crude già tagliate (sedano, cetrioli, carote)",
             "Salse: Hummus, tahina, pesto fatto in casa"
         ],
         
@@ -173,9 +185,10 @@ def get_nutrition_guidelines_antonio() -> dict:
         
         "budget_tips": [
             "Legumi secchi (più economici che in scatola)",
-            "Verdure di stagione al mercato",
-            "Cereali integrali in bulk",
-            "Uova come proteine economiche",
+            "Verdure di stagione al mercato locale",
+            "Cereali integrali in bulk/sfuso",
+            "UOVA: le proteine più economiche ed efficaci (consumo quotidiano)",
+            "Verdure a calorie negative: sedano, cetrioli, lattuga (economiche e sazianti)",
             "Pesce solo occasionale (quando in offerta)"
         ],
         
