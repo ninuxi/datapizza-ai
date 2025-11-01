@@ -257,9 +257,37 @@ with st.sidebar:
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         st.error("❌ GOOGLE_API_KEY non trovata nel file .env")
-        st.stop()
     else:
         st.success("✅ API Key configurata")
+
+    # Permetti aggiornamento della API key se scaduta/invalid
+    with st.expander("🔑 Configura/aggiorna GOOGLE_API_KEY", expanded=not bool(api_key)):
+        new_key = st.text_input("Inserisci nuova GOOGLE_API_KEY", type="password", value=api_key or "")
+        if st.button("💾 Salva API Key"):
+            # Aggiorna .env e variabile d'ambiente
+            env_path = Path(__file__).parent / ".env"
+            try:
+                # Carica contenuto esistente se presente
+                env_lines = []
+                if env_path.exists():
+                    env_lines = env_path.read_text().splitlines()
+                # Rimuovi eventuali righe precedenti
+                env_lines = [l for l in env_lines if not l.startswith("GOOGLE_API_KEY=")]
+                env_lines.append(f"GOOGLE_API_KEY={new_key}")
+                env_path.write_text("\n".join(env_lines))
+            except Exception:
+                pass
+
+            os.environ["GOOGLE_API_KEY"] = new_key
+            # Reinizializza client
+            try:
+                client = GoogleClient(model="gemini-2.0-flash-exp", api_key=new_key)
+                if st.session_state.profile:
+                    st.session_state.agent = NutritionAgent(client, st.session_state.profile)
+                st.success("✅ API Key aggiornata e client reinizializzato")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Errore nell'inizializzazione client: {e}")
     
     st.markdown("---")
     
@@ -330,14 +358,21 @@ if page == "🏠 Home":
         with col1:
             if st.button("📅 Genera Piano Oggi", type="primary", use_container_width=True):
                 with st.spinner("Generando piano giornaliero..."):
-                    today = datetime.now().strftime("%Y-%m-%d")
-                    weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
-                    is_workout = weekday_it in (st.session_state.profile.workout_days or [])
-                    
-                    plan = st.session_state.agent.generate_daily_plan(today, is_workout)
-                    st.session_state.current_plan = plan
-                    st.success("✅ Piano generato!")
-                    st.rerun()
+                    try:
+                        today = datetime.now().strftime("%Y-%m-%d")
+                        weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
+                        is_workout = weekday_it in (st.session_state.profile.workout_days or [])
+                        plan = st.session_state.agent.generate_daily_plan(today, is_workout)
+                        st.session_state.current_plan = plan
+                        st.success("✅ Piano generato!")
+                        st.rerun()
+                    except Exception as e:
+                        # Cerca messaggio chiave API scaduta
+                        msg = str(e)
+                        if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                            st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                        else:
+                            st.error(f"Errore nella generazione del piano: {e}")
         
         with col2:
             if st.button("📆 Genera Piano Settimana", type="secondary", use_container_width=True):
@@ -553,9 +588,12 @@ elif page == "📅 Piano Giornaliero":
             selected_date = st.date_input("Seleziona data", value=datetime.now())
         with col2:
             weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][selected_date.weekday()]
+            default_days = []
+            if st.session_state.profile and getattr(st.session_state.profile, 'workout_days', None):
+                default_days = st.session_state.profile.workout_days
             is_workout = st.checkbox(
                 "Giorno allenamento", 
-                value=weekday_it in (st.session_state.profile.workout_days or [])
+                value=weekday_it in default_days
             )
         with col3:
             if st.button("🔄 Rigenera Piano", type="primary"):
@@ -564,13 +602,20 @@ elif page == "📅 Piano Giornaliero":
         if not st.session_state.current_plan or st.session_state.current_plan.date != selected_date.strftime("%Y-%m-%d"):
             if st.button("✨ Genera Piano", type="primary", use_container_width=True):
                 with st.spinner("🤖 AI sta preparando il tuo piano..."):
-                    plan = st.session_state.agent.generate_daily_plan(
-                        selected_date.strftime("%Y-%m-%d"), 
-                        is_workout
-                    )
-                    st.session_state.current_plan = plan
-                    st.success("✅ Piano generato!")
-                    st.rerun()
+                    try:
+                        plan = st.session_state.agent.generate_daily_plan(
+                            selected_date.strftime("%Y-%m-%d"), 
+                            is_workout
+                        )
+                        st.session_state.current_plan = plan
+                        st.success("✅ Piano generato!")
+                        st.rerun()
+                    except Exception as e:
+                        msg = str(e)
+                        if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                            st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                        else:
+                            st.error(f"Errore nella generazione del piano: {e}")
         
         if st.session_state.current_plan:
             plan = st.session_state.current_plan
@@ -650,13 +695,19 @@ elif page == "📆 Piano Settimanale":
         
         if st.button("✨ Genera Piano Settimanale", type="primary", use_container_width=True):
             with st.spinner("🤖 Generazione in corso... (può richiedere 1-2 minuti)"):
-                weekly = st.session_state.agent.generate_weekly_plan()
-                
-                # Save to session
-                st.session_state.weekly_plan = weekly
-                st.success("✅ Piano settimanale generato!")
+                try:
+                    weekly = st.session_state.agent.generate_weekly_plan()
+                    # Save to session
+                    st.session_state.weekly_plan = weekly
+                    st.success("✅ Piano settimanale generato!")
+                except Exception as e:
+                    msg = str(e)
+                    if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                        st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                    else:
+                        st.error(f"Errore nella generazione del piano settimanale: {e}")
         
-        if 'weekly_plan' in st.session_state:
+        if 'weekly_plan' in st.session_state and st.session_state.weekly_plan:
             weekly = st.session_state.weekly_plan
             
             # Weekly summary
@@ -722,13 +773,18 @@ elif page == "🔍 Cerca Ricette":
                 preferences["proteico"] = True
             
             with st.spinner("🤖 Cercando ricette..."):
-                meal_enum = MealType(meal_type)
-                suggestions = st.session_state.agent.get_meal_suggestions(meal_enum, preferences)
-                
-                st.success(f"✅ Trovate {len(suggestions)} ricette!")
-                
-                for i, recipe in enumerate(suggestions, 1):
-                    st.markdown(f"{i}. **{recipe}**")
+                try:
+                    meal_enum = MealType(meal_type)
+                    suggestions = st.session_state.agent.get_meal_suggestions(meal_enum, preferences)
+                    st.success(f"✅ Trovate {len(suggestions)} ricette!")
+                    for i, recipe in enumerate(suggestions, 1):
+                        st.markdown(f"{i}. **{recipe}**")
+                except Exception as e:
+                    msg = str(e)
+                    if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                        st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                    else:
+                        st.error(f"Errore nella ricerca: {e}")
 
 # ============================================================================
 # TABATA TIMER - ALLENAMENTO
@@ -935,13 +991,16 @@ Data Directory: data/nutrition/
         if st.button("📥 Esporta Profilo"):
             import json
             from dataclasses import asdict
-            profile_json = json.dumps(asdict(st.session_state.profile), indent=2, default=str)
-            st.download_button(
-                "💾 Scarica JSON",
-                profile_json,
-                file_name="nutrition_profile.json",
-                mime="application/json"
-            )
+            if st.session_state.profile:
+                profile_json = json.dumps(asdict(st.session_state.profile), indent=2, default=str)
+                st.download_button(
+                    "💾 Scarica JSON",
+                    profile_json,
+                    file_name="nutrition_profile.json",
+                    mime="application/json"
+                )
+            else:
+                st.warning("Nessun profilo caricato da esportare.")
 
 # Footer
 st.markdown("---")
