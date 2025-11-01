@@ -408,16 +408,37 @@ LINEE GUIDA GENERALI:
         prompt += """
 FORMATO RISPOSTA:
 =================
-Per ogni pasto genera un JSON strutturato con:
+Per ogni pasto genera un JSON strutturato con ESATTAMENTE questi campi:
 - recipe_name: nome ricetta appetitoso e descrittivo
-- ingredients: lista ingredienti con quantità precise
-- instructions: step by step chiari e numerati
-- calories: calorie totali stimate
-- macros: {"protein": X, "carbs": Y, "fats": Z} in grammi
-- prep_time: minuti preparazione
-- cooking_time: minuti cottura
-- seasonal_score: 0.0-1.0 (quanto usa ingredienti stagionali)
-- notes: consigli per conservazione, varianti, meal prep
+- ingredients: lista di oggetti [{"nome": "ingrediente", "quantità": "100g"}, ...]
+- instructions: lista di stringhe ["Passo 1...", "Passo 2...", ...]
+- calories: numero intero (calorie totali)
+- macros: {"proteine": X, "carboidrati": Y, "grassi": Z} in grammi (chiavi in italiano!)
+- prep_time: numero intero minuti preparazione
+- cooking_time: numero intero minuti cottura
+- seasonal_score: numero float 0.0-1.0 (quanto usa ingredienti stagionali)
+- notes: stringa con consigli per conservazione, varianti, meal prep
+
+ESEMPIO JSON:
+{
+  "recipe_name": "Zuppa di lenticchie e cavolo nero",
+  "ingredients": [
+    {"nome": "lenticchie secche", "quantità": "200g"},
+    {"nome": "cavolo nero", "quantità": "150g"},
+    {"nome": "carote", "quantità": "100g"}
+  ],
+  "instructions": [
+    "Ammollare le lenticchie per 2 ore",
+    "Tagliare le verdure a pezzi",
+    "Cuocere tutto in pentola per 30 minuti"
+  ],
+  "calories": 450,
+  "macros": {"proteine": 25, "carboidrati": 65, "grassi": 8},
+  "prep_time": 15,
+  "cooking_time": 30,
+  "seasonal_score": 0.9,
+  "notes": "Si conserva in frigo 3-4 giorni. Ottimo per meal prep."
+}
 
 Sii creativo ma pratico. L'utente vuole mangiare sano senza stress.
 Ricette della tradizione italiana rivisitate in chiave salutare.
@@ -526,16 +547,24 @@ Requisiti specifici per {meal_type.value}:
             
             meal_data = json.loads(text)
             
+            # Normalizza i macros (gestisci chiavi inglesi/italiane)
+            macros = meal_data.get("macros", {})
+            normalized_macros = {
+                "proteine": float(macros.get("proteine") or macros.get("protein") or macros.get("proteins") or 0),
+                "carboidrati": float(macros.get("carboidrati") or macros.get("carbs") or macros.get("carbohydrates") or 0),
+                "grassi": float(macros.get("grassi") or macros.get("fats") or macros.get("fat") or 0)
+            }
+            
             meal_plan = MealPlan(
                 date=date,
                 meal_type=meal_type,
                 recipe_name=meal_data["recipe_name"],
                 ingredients=meal_data["ingredients"],
                 instructions=meal_data["instructions"],
-                calories=meal_data["calories"],
-                macros=meal_data["macros"],
-                prep_time=meal_data["prep_time"],
-                cooking_time=meal_data["cooking_time"],
+                calories=int(meal_data["calories"]),
+                macros=normalized_macros,
+                prep_time=int(meal_data.get("prep_time", 0)),
+                cooking_time=int(meal_data.get("cooking_time", 0)),
                 notes=meal_data.get("notes", ""),
                 seasonal_score=meal_data.get("seasonal_score", 0.8)
             )
@@ -569,8 +598,33 @@ Requisiti specifici per {meal_type.value}:
         
         for meal in meals:
             for ingredient in meal.ingredients:
-                name = ingredient["nome"].lower()
-                qty = ingredient["quantità"]
+                # Gestisci diverse strutture JSON
+                if isinstance(ingredient, dict):
+                    # Prova diverse chiavi possibili per il nome
+                    name = (
+                        ingredient.get("nome") or 
+                        ingredient.get("name") or 
+                        ingredient.get("ingrediente") or 
+                        ingredient.get("ingredient") or
+                        str(ingredient.get("item", "ingrediente sconosciuto"))
+                    ).lower()
+                    
+                    # Prova diverse chiavi possibili per la quantità
+                    qty = (
+                        ingredient.get("quantità") or 
+                        ingredient.get("quantity") or 
+                        ingredient.get("qty") or 
+                        ingredient.get("amount") or
+                        "q.b."
+                    )
+                elif isinstance(ingredient, str):
+                    # Se è una stringa, usala direttamente
+                    name = ingredient.lower()
+                    qty = "q.b."
+                else:
+                    # Fallback
+                    name = str(ingredient).lower()
+                    qty = "q.b."
                 
                 if name in ingredients_dict:
                     ingredients_dict[name] += f", {qty}"
