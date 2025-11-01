@@ -35,7 +35,9 @@ from nutrition_agent import (
 
 # Import datapizza
 sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-core"))
-from datapizza.clients.google import GoogleClient
+# Add OpenAI-like and Google client packages to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-openai-like"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "datapizza-ai-clients" / "datapizza-ai-clients-google"))
 
 # Page config
 st.set_page_config(
@@ -44,6 +46,60 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Small factory to build LLM client from settings
+def create_llm_client(provider: str, api_key: str | None, model: str, base_url: str | None):
+    provider = (provider or "google").lower()
+    if provider == "google":
+        if not api_key:
+            raise ValueError("Manca la API key per Google. Inseriscila nella sidebar.")
+        # Lazy import to avoid import errors when package not present
+        from datapizza.clients.google import GoogleClient  # type: ignore
+        return GoogleClient(model=model or "gemini-2.0-flash-exp", api_key=api_key)
+
+    # OpenAI-compatible providers (free/cheap tiers): OpenRouter, Groq, DeepSeek, Together, Local Ollama
+    # Defaults per provider
+    defaults = {
+        "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "model": model or "meta-llama/llama-3.1-8b-instruct:free",
+        },
+        "groq": {
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": model or "llama-3.1-8b-instant",
+        },
+        "deepseek": {
+            "base_url": "https://api.deepseek.com",
+            "model": model or "deepseek-chat",
+        },
+        "together": {
+            "base_url": "https://api.together.xyz/v1",
+            "model": model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+        },
+        "ollama": {
+            "base_url": "http://localhost:11434/v1",
+            "model": model or "llama3.1:8b",
+        },
+        "openai-like": {
+            "base_url": base_url or "",
+            "model": model or "gpt-4o-mini",
+        },
+    }
+
+    key = provider if provider in defaults else "openai-like"
+    cfg = defaults[key]
+    base = base_url or cfg.get("base_url")
+    mdl = cfg.get("model")
+
+    # Ollama non richiede API key
+    if provider == "ollama":
+        from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
+        return OpenAILikeClient(api_key=api_key or "ollama", model=mdl, base_url=base)
+
+    if not api_key:
+        raise ValueError("Manca la API key per il provider selezionato. Inseriscila nella sidebar.")
+    from datapizza.clients.openai_like import OpenAILikeClient  # type: ignore
+    return OpenAILikeClient(api_key=api_key, model=mdl, base_url=base)
 
 # Custom CSS - Tema Verdure Stagionali Allegro
 st.markdown("""
@@ -242,9 +298,13 @@ if st.session_state.profile is None:
         
         # Inizializza anche l'agent
         if st.session_state.agent is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if api_key:
-                client = GoogleClient(model="gemini-2.0-flash-exp", api_key=api_key)
+            # Leggi preferenze provider da sessione o env (fallback Google)
+            provider = st.session_state.get("llm_provider", "google")
+            model = st.session_state.get("llm_model", "gemini-2.0-flash-exp")
+            base_url = st.session_state.get("llm_base_url", None)
+            api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+            if api_key or provider == "ollama":
+                client = create_llm_client(provider, api_key, model or "", base_url)
                 st.session_state.agent = NutritionAgent(client, st.session_state.profile)
     except ImportError:
         pass  # Se profile_antonio non esiste, lascia che l'utente lo configuri manualmente
@@ -253,16 +313,42 @@ if st.session_state.profile is None:
 with st.sidebar:
     st.header("⚙️ Configurazione")
     
-    # Check API key
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        st.error("❌ GOOGLE_API_KEY non trovata nel file .env")
+    # Provider selection
+    st.subheader("🤖 Modello LLM")
+    provider = st.selectbox(
+        "Provider",
+        ["google", "openrouter", "groq", "deepseek", "together", "ollama"],
+        index=["google", "openrouter", "groq", "deepseek", "together", "ollama"].index(st.session_state.get("llm_provider", "google"))
+    )
+    st.session_state.llm_provider = provider
+
+    defaults = {
+        "google": {"model": "gemini-2.0-flash-exp", "base_url": ""},
+        "openrouter": {"model": "meta-llama/llama-3.1-8b-instruct:free", "base_url": "https://openrouter.ai/api/v1"},
+        "groq": {"model": "llama-3.1-8b-instant", "base_url": "https://api.groq.com/openai/v1"},
+        "deepseek": {"model": "deepseek-chat", "base_url": "https://api.deepseek.com"},
+        "together": {"model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "base_url": "https://api.together.xyz/v1"},
+        "ollama": {"model": "llama3.1:8b", "base_url": "http://localhost:11434/v1"},
+    }
+    def_val = defaults.get(provider, defaults["google"]) 
+    model = st.text_input("Modello", value=st.session_state.get("llm_model", def_val["model"]))
+    st.session_state.llm_model = model
+    base_url = st.text_input("Base URL (se richiesto)", value=st.session_state.get("llm_base_url", def_val["base_url"]))
+    st.session_state.llm_base_url = base_url
+
+    # Check API key (Google o generica)
+    api_key_env = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+    if provider == "ollama":
+        st.info("🖥️ Ollama non richiede API key. Assicurati che Ollama giri su localhost:11434 e che il modello sia installato (es: `ollama pull llama3.1:8b`).")
+    elif not api_key_env:
+        st.error("❌ API key mancante. Inseriscila nel pannello qui sotto e salva.")
     else:
-        st.success("✅ API Key configurata")
+        st.success("✅ API Key presente nelle variabili d'ambiente")
 
     # Permetti aggiornamento della API key se scaduta/invalid
-    with st.expander("🔑 Configura/aggiorna GOOGLE_API_KEY", expanded=not bool(api_key)):
-        new_key = st.text_input("Inserisci nuova GOOGLE_API_KEY", type="password", value=api_key or "")
+    with st.expander("🔑 Configura/aggiorna API Key", expanded=not bool(api_key_env)):
+        label = "GOOGLE_API_KEY" if provider == "google" else "API_KEY"
+        new_key = st.text_input(f"Inserisci nuova {label}", type="password", value=api_key_env or "")
         if st.button("💾 Salva API Key"):
             # Aggiorna .env e variabile d'ambiente
             env_path = Path(__file__).parent / ".env"
@@ -272,16 +358,22 @@ with st.sidebar:
                 if env_path.exists():
                     env_lines = env_path.read_text().splitlines()
                 # Rimuovi eventuali righe precedenti
-                env_lines = [l for l in env_lines if not l.startswith("GOOGLE_API_KEY=")]
-                env_lines.append(f"GOOGLE_API_KEY={new_key}")
+                env_lines = [l for l in env_lines if not (l.startswith("GOOGLE_API_KEY=") or l.startswith("API_KEY="))]
+                if provider == "google":
+                    env_lines.append(f"GOOGLE_API_KEY={new_key}")
+                else:
+                    env_lines.append(f"API_KEY={new_key}")
                 env_path.write_text("\n".join(env_lines))
             except Exception:
                 pass
 
-            os.environ["GOOGLE_API_KEY"] = new_key
+            if provider == "google":
+                os.environ["GOOGLE_API_KEY"] = new_key
+            else:
+                os.environ["API_KEY"] = new_key
             # Reinizializza client
             try:
-                client = GoogleClient(model="gemini-2.0-flash-exp", api_key=new_key)
+                client = create_llm_client(provider, new_key, model, base_url)
                 if st.session_state.profile:
                     st.session_state.agent = NutritionAgent(client, st.session_state.profile)
                 st.success("✅ API Key aggiornata e client reinizializzato")
@@ -464,8 +556,11 @@ elif page == "👤 Profilo":
                     from profile_antonio import create_antonio_profile
                     st.session_state.profile = create_antonio_profile()
                     
-                    api_key = os.getenv("GOOGLE_API_KEY")
-                    client = GoogleClient(model="gemini-2.0-flash-exp", api_key=api_key)
+                    provider = st.session_state.get("llm_provider", "google")
+                    model_name = st.session_state.get("llm_model", "gemini-2.0-flash-exp")
+                    base_url = st.session_state.get("llm_base_url", None)
+                    api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+                    client = create_llm_client(provider, api_key, model_name or "", base_url)
                     st.session_state.agent = NutritionAgent(client, st.session_state.profile)
                     
                     st.success("✅ Profilo Antonio caricato con successo!")
@@ -564,7 +659,11 @@ elif page == "👤 Profilo":
                 )
                 
                 # Inizializza agent
-                client = GoogleClient(api_key=api_key, model="gemini-2.0-flash-exp")
+                provider = st.session_state.get("llm_provider", "google")
+                model_name = st.session_state.get("llm_model", "gemini-2.0-flash-exp")
+                base_url = st.session_state.get("llm_base_url", None)
+                api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+                client = create_llm_client(provider, api_key, model_name or "", base_url)
                 agent = NutritionAgent(client, profile)
                 
                 st.session_state.profile = profile
