@@ -1,4 +1,5 @@
 import json
+import os
 from collections.abc import AsyncIterator, Iterator
 from typing import Literal
 
@@ -36,6 +37,8 @@ class OpenAILikeClient(Client):
         temperature: float | None = None,
         cache: Cache | None = None,
         base_url: str | httpx.URL | None = None,
+    timeout_s: float = 30.0,
+    max_retries: int = 1,
     ):
         if temperature and not 0 <= temperature <= 2:
             raise ValueError("Temperature must be between 0 and 2")
@@ -50,15 +53,46 @@ class OpenAILikeClient(Client):
         self.base_url = base_url
         self.api_key = api_key
         self.memory_adapter = OpenAILikeMemoryAdapter()
+        self.timeout_s = timeout_s
+        self.max_retries = max_retries
         self._set_client()
 
     def _set_client(self):
         if not self.client:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # Add OpenRouter-required headers when using OpenRouter base_url
+            if self.base_url and "openrouter.ai" in str(self.base_url):
+                # Allow overriding headers via environment to support non-default ports/titles
+                referer = os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost:8501")
+                x_title = os.environ.get("OPENROUTER_X_TITLE", "Nutrition Agent")
+                self.client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                    timeout=self.timeout_s,
+                    max_retries=self.max_retries,
+                    default_headers={
+                        "HTTP-Referer": referer,
+                        "X-Title": x_title,
+                    },
+                )
+            else:
+                self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s, max_retries=self.max_retries)
 
     def _set_a_client(self):
         if not self.a_client:
-            self.a_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+            if self.base_url and "openrouter.ai" in str(self.base_url):
+                referer = os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost:8501")
+                x_title = os.environ.get("OPENROUTER_X_TITLE", "Nutrition Agent")
+                self.a_client = AsyncOpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                    timeout=self.timeout_s,
+                    default_headers={
+                        "HTTP-Referer": referer,
+                        "X-Title": x_title,
+                    },
+                )
+            else:
+                self.a_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s)
 
     def _response_to_client_response(
         self, response, tool_map: dict[str, Tool] | None
@@ -159,7 +193,7 @@ class OpenAILikeClient(Client):
             kwargs["tool_choice"] = self._convert_tool_choice(tool_choice)
 
         client: OpenAI = self._get_client()
-        response = client.chat.completions.create(**kwargs)
+        response = client.chat.completions.create(timeout=self.timeout_s, **kwargs)
         return self._response_to_client_response(response, tool_map)
 
     async def _a_invoke(
@@ -195,7 +229,7 @@ class OpenAILikeClient(Client):
             kwargs["tool_choice"] = self._convert_tool_choice(tool_choice)
 
         a_client = self._get_a_client()
-        response = await a_client.chat.completions.create(**kwargs)
+        response = await a_client.chat.completions.create(timeout=self.timeout_s, **kwargs)
         return self._response_to_client_response(response, tool_map)
 
     def _stream_invoke(
@@ -226,8 +260,7 @@ class OpenAILikeClient(Client):
         if tools:
             kwargs["tools"] = [self._convert_tools(tool) for tool in tools]
             kwargs["tool_choice"] = self._convert_tool_choice(tool_choice)
-
-        response = self.client.chat.completions.create(**kwargs)
+        response = self.client.chat.completions.create(timeout=self.timeout_s, **kwargs)
         message_content = ""
         usage = TokenUsage()
         finish_reason = None

@@ -15,16 +15,43 @@ Features:
 Autore: Antonio Mainenti
 """
 
-import streamlit as st
 import sys
 from pathlib import Path
+
+# Fix per ModuleNotFoundError: aggiungo manualmente le cartelle dei pacchetti editable
+# al python path. Questo è necessario perché streamlit run a volte non carica
+# correttamente i percorsi da un ambiente virtuale con installazioni in modalità editable.
+try:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    # Aggiungo le root dei pacchetti "datapizza-ai-*" che contengono il namespace "datapizza"
+    PATHS_TO_ADD = [
+        str(PROJECT_ROOT / "datapizza-ai-core"),
+        str(PROJECT_ROOT / "datapizza-ai-clients" / "datapizza-ai-clients-google"),
+        str(PROJECT_ROOT / "datapizza-ai-clients" / "datapizza-ai-clients-openai-like"),
+    ]
+    for p in PATHS_TO_ADD:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+except Exception:
+    # Ignora errori se i percorsi non esistono, per flessibilità
+    pass
+
+import streamlit as st
 from datetime import datetime, timedelta
 import json
 import os
+import pickle
+from typing import Optional
 from dotenv import load_dotenv
 
 # Load env
+# 1) carica .env dalla root del progetto (cwd)
 load_dotenv()
+# 2) sovrascrivi con eventuale .env locale della cartella nutrition-agent
+try:
+    load_dotenv(dotenv_path=str(Path(__file__).parent / ".env"), override=True)
+except Exception:
+    pass
 
 # Import nutrition agent
 sys.path.insert(0, str(Path(__file__).parent))
@@ -32,6 +59,7 @@ from nutrition_agent import (
     NutritionAgent, UserProfile, MealType, ActivityLevel, 
     DietaryGoal, create_sample_profile
 )
+from rag.index import RecipeIndexer, RAGConfig
 
 # Import clients (installed in editable mode)
 from datapizza.clients.google import GoogleClient  # type: ignore
@@ -47,53 +75,22 @@ st.set_page_config(
 
 # Small factory to build LLM client from settings
 def create_llm_client(provider: str, api_key: str | None, model: str, base_url: str | None):
-    provider = (provider or "google").lower()
-    if provider == "google":
+    provider = (provider or "groq").lower()
+    
+    # Priorità a Groq
+    if provider == "groq":
         if not api_key:
-            raise ValueError("Manca la API key per Google. Inseriscila nella sidebar.")
-        return GoogleClient(model=model or "gemini-2.0-flash-exp", api_key=api_key)
+            raise ValueError("Manca la API key per Groq. Inseriscila nella sidebar.")
+        return OpenAILikeClient(
+            api_key=api_key, 
+            model=model or "llama-3.1-8b-instant", 
+            base_url=base_url or "https://api.groq.com/openai/v1"
+        )
 
-    # OpenAI-compatible providers (free/cheap tiers): OpenRouter, Groq, DeepSeek, Together, Local Ollama
-    # Defaults per provider
-    defaults = {
-        "openrouter": {
-            "base_url": "https://openrouter.ai/api/v1",
-            "model": model or "meta-llama/llama-3.1-8b-instruct:free",
-        },
-        "groq": {
-            "base_url": "https://api.groq.com/openai/v1",
-            "model": model or "llama-3.1-8b-instant",
-        },
-        "deepseek": {
-            "base_url": "https://api.deepseek.com",
-            "model": model or "deepseek-chat",
-        },
-        "together": {
-            "base_url": "https://api.together.xyz/v1",
-            "model": model or "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-        },
-        "ollama": {
-            "base_url": "http://localhost:11434/v1",
-            "model": model or "llama3.2:3b",
-        },
-        "openai-like": {
-            "base_url": base_url or "",
-            "model": model or "gpt-4o-mini",
-        },
-    }
-
-    key = provider if provider in defaults else "openai-like"
-    cfg = defaults[key]
-    base = base_url or cfg.get("base_url")
-    mdl = cfg.get("model")
-
-    # Ollama non richiede API key
-    if provider == "ollama":
-        return OpenAILikeClient(api_key=api_key or "ollama", model=mdl, base_url=base)
-
+    # Fallback su OpenRouter o altri OpenAI-like
     if not api_key:
-        raise ValueError("Manca la API key per il provider selezionato. Inseriscila nella sidebar.")
-    return OpenAILikeClient(api_key=api_key, model=mdl, base_url=base)
+        raise ValueError(f"Manca la API key per il provider {provider}. Inseriscila nella sidebar.")
+    return OpenAILikeClient(api_key=api_key, model=model, base_url=base_url)
 
 # Custom CSS - Tema Verdure Stagionali Allegro
 st.markdown("""
@@ -283,6 +280,85 @@ if 'current_plan' not in st.session_state:
     st.session_state.current_plan = None
 if 'weekly_plan' not in st.session_state:
     st.session_state.weekly_plan = None
+if 'recipe_indexer' not in st.session_state:
+    st.session_state.recipe_indexer = None
+if 'rag_enabled' not in st.session_state:
+    st.session_state.rag_enabled = False
+
+# --- Simple on-disk cache to survive full page reloads ---
+CACHE_DIR = Path(__file__).parent / ".cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+PLAN_CACHE = CACHE_DIR / "current_plan.pkl"
+WEEKLY_CACHE = CACHE_DIR / "weekly_plan.pkl"
+INDEX_META = CACHE_DIR / "index_meta.json"
+
+def save_plan_cache(plan_obj) -> None:
+    try:
+        with open(PLAN_CACHE, "wb") as f:
+            pickle.dump(plan_obj, f)
+    except Exception as e:
+        st.warning(f"Impossibile salvare cache piano: {e}")
+
+def load_plan_cache():
+    if PLAN_CACHE.exists():
+        try:
+            with open(PLAN_CACHE, "rb") as f:
+                return pickle.load(f)
+        except Exception:
+            return None
+    return None
+
+def save_weekly_cache(weekly_obj) -> None:
+    try:
+        with open(WEEKLY_CACHE, "wb") as f:
+            pickle.dump(weekly_obj, f)
+    except Exception as e:
+        st.warning(f"Impossibile salvare cache piano settimanale: {e}")
+
+def load_weekly_cache():
+    if WEEKLY_CACHE.exists():
+        try:
+            with open(WEEKLY_CACHE, "rb") as f:
+                return pickle.load(f)
+        except Exception:
+            return None
+    return None
+
+def save_index_meta(index_dir: Path) -> None:
+    try:
+        with open(INDEX_META, "w", encoding="utf-8") as f:
+            json.dump({"index_dir": str(index_dir)}, f)
+    except Exception as e:
+        st.warning(f"Impossibile salvare metadata indice RAG: {e}")
+
+def load_indexer_from_meta() -> Optional[RecipeIndexer]:
+    if not INDEX_META.exists():
+        return None
+    try:
+        with open(INDEX_META, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        index_dir = Path(data.get("index_dir"))
+        if index_dir.exists():
+            config = RAGConfig(corpus_dir=index_dir.parent, index_dir=index_dir)
+            indexer = RecipeIndexer(config=config)
+            indexer.ensure_index()
+            return indexer
+    except Exception as e:
+        st.warning(f"Impossibile caricare indice RAG da cache: {e}")
+    return None
+
+# Try to load cached plan/index at startup
+cached_plan = load_plan_cache()
+if cached_plan is not None and st.session_state.current_plan is None:
+    st.session_state.current_plan = cached_plan
+
+cached_weekly = load_weekly_cache()
+if cached_weekly is not None and st.session_state.weekly_plan is None:
+    st.session_state.weekly_plan = cached_weekly
+
+cached_indexer = load_indexer_from_meta()
+if cached_indexer is not None and st.session_state.recipe_indexer is None:
+    st.session_state.recipe_indexer = cached_indexer
 
 # Auto-carica profilo Antonio se non c'è profilo
 if st.session_state.profile is None:
@@ -292,19 +368,36 @@ if st.session_state.profile is None:
     except ImportError:
         pass  # Se profile_antonio non esiste, lascia che l'utente lo configuri manualmente
 
+# Helper per mappare provider -> nome variabile d'ambiente
+def _provider_env_var(provider: str) -> str | None:
+    mapping = {
+        "groq": "GROQ_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "together": "TOGETHER_API_KEY",
+        "ollama": None,
+    }
+    return mapping.get((provider or "").lower(), "API_KEY")
+
 # Inizializza agent se manca ma c'è un profilo
 if st.session_state.agent is None and st.session_state.profile is not None:
-    # Leggi preferenze provider da sessione (fallback Ollama per essere gratuito di default)
-    provider = st.session_state.get("llm_provider", "ollama")
-    model = st.session_state.get("llm_model", "llama3.2:3b")
-    base_url = st.session_state.get("llm_base_url", "http://localhost:11434/v1")
-    api_key = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
+    # Default a Groq
+    provider = st.session_state.get("llm_provider", "groq")
+    
+    # Default modello/base_url in base al provider
+    if provider == "groq":
+        model = st.session_state.get("llm_model", "llama-3.1-8b-instant")
+        base_url = st.session_state.get("llm_base_url", "https://api.groq.com/openai/v1")
+    else: # Fallback per altri provider
+        model = st.session_state.get("llm_model", "openrouter/auto")
+        base_url = st.session_state.get("llm_base_url", "https://openrouter.ai/api/v1")
+        
+    env_var = _provider_env_var(provider)
+    api_key = os.getenv(env_var) if env_var else None
     
     if api_key or provider == "ollama":
         try:
-            import sys
-            # Debug: mostra i path per verificare che siano corretti
-            # st.info(f"🔍 Debug sys.path: {sys.path[:3]}")
             client = create_llm_client(provider, api_key, model or "", base_url)
             st.session_state.agent = NutritionAgent(client, st.session_state.profile)
             st.success(f"✅ Agent inizializzato con provider: **{provider}** (model: {model})")
@@ -316,47 +409,48 @@ if st.session_state.agent is None and st.session_state.profile is not None:
                 st.code(error_details)
             st.info("💡 Controlla la configurazione nella sidebar o ricarica la pagina.")
     else:
-        st.warning(f"⚠️ Provider '{provider}' selezionato ma manca API key. Inseriscila nella sidebar o seleziona Ollama.")
+        st.warning(f"⚠️ Provider '{provider}' selezionato ma manca API key ({env_var}). Inseriscila nella sidebar.")
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configurazione")
     
-    # Provider selection
-    st.subheader("🤖 Modello LLM")
+    # Provider selection con Groq come default
+    st.subheader("🤖 Modello LLM (Groq default)")
+    provider_options = ["groq", "openrouter", "google", "ollama", "deepseek", "together"]
     provider = st.selectbox(
         "Provider",
-        ["ollama", "google", "openrouter", "groq", "deepseek", "together"],
-        index=["ollama", "google", "openrouter", "groq", "deepseek", "together"].index(st.session_state.get("llm_provider", "ollama"))
+        provider_options,
+        index=0 # Groq è il primo
     )
     st.session_state.llm_provider = provider
 
     defaults = {
-        "ollama": {"model": "llama3.2:3b", "base_url": "http://localhost:11434/v1"},
-        "google": {"model": "gemini-2.0-flash-exp", "base_url": ""},
-        "openrouter": {"model": "meta-llama/llama-3.1-8b-instruct:free", "base_url": "https://openrouter.ai/api/v1"},
         "groq": {"model": "llama-3.1-8b-instant", "base_url": "https://api.groq.com/openai/v1"},
-        "deepseek": {"model": "deepseek-chat", "base_url": "https://api.deepseek.com"},
-        "together": {"model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "base_url": "https://api.together.xyz/v1"},
+        "openrouter": {"model": "openrouter/auto", "base_url": "https://openrouter.ai/api/v1"},
     }
-    def_val = defaults.get(provider, defaults["google"]) 
+    def_val = defaults.get(provider, defaults["groq"]) 
     model = st.text_input("Modello", value=st.session_state.get("llm_model", def_val["model"]))
     st.session_state.llm_model = model
     base_url = st.text_input("Base URL (se richiesto)", value=st.session_state.get("llm_base_url", def_val["base_url"]))
     st.session_state.llm_base_url = base_url
 
-    # Check API key (Google o generica)
-    api_key_env = os.getenv("GOOGLE_API_KEY") if provider == "google" else os.getenv("API_KEY")
-    if provider == "ollama":
-        st.info("🖥️ Ollama non richiede API key. Assicurati che Ollama giri su localhost:11434 e che il modello sia installato (es: `ollama pull llama3.1:8b`).")
-    elif not api_key_env:
-        st.error("❌ API key mancante. Inseriscila nel pannello qui sotto e salva.")
-    else:
-        st.success("✅ API Key presente nelle variabili d'ambiente")
+    # Check API key per provider
+    env_var = _provider_env_var(provider)
+    api_key_env = os.getenv(env_var) if env_var else None
+    
+    if provider != "ollama" and not api_key_env:
+        st.error(f"❌ API key mancante per {provider}. Inserisci {env_var} nel pannello qui sotto e salva.")
+        if provider == "groq":
+            st.caption("Ottieni una chiave: https://console.groq.com/keys")
+        elif provider == "openrouter":
+            st.caption("Ottieni una chiave: https://openrouter.ai/keys")
+    elif provider != "ollama":
+        st.success(f"✅ API Key trovata in {env_var}")
 
     # Permetti aggiornamento della API key se scaduta/invalid
     with st.expander("🔑 Configura/aggiorna API Key", expanded=not bool(api_key_env)):
-        label = "GOOGLE_API_KEY" if provider == "google" else "API_KEY"
+        label = env_var or "API_KEY"
         new_key = st.text_input(f"Inserisci nuova {label}", type="password", value=api_key_env or "")
         if st.button("💾 Salva API Key"):
             # Aggiorna .env e variabile d'ambiente
@@ -367,19 +461,17 @@ with st.sidebar:
                 if env_path.exists():
                     env_lines = env_path.read_text().splitlines()
                 # Rimuovi eventuali righe precedenti
-                env_lines = [l for l in env_lines if not (l.startswith("GOOGLE_API_KEY=") or l.startswith("API_KEY="))]
-                if provider == "google":
-                    env_lines.append(f"GOOGLE_API_KEY={new_key}")
-                else:
-                    env_lines.append(f"API_KEY={new_key}")
+                keys_to_remove = ["GROQ_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_API_KEY", "DEEPSEEK_API_KEY", "TOGETHER_API_KEY", "API_KEY"]
+                env_lines = [l for l in env_lines if not any(l.startswith(k+"=") for k in keys_to_remove)]
+                # Mantieni anche eventuali altre righe e aggiungi la nuova chiave per il provider
+                if label:
+                    env_lines.append(f"{label}={new_key}")
                 env_path.write_text("\n".join(env_lines))
             except Exception:
                 pass
 
-            if provider == "google":
-                os.environ["GOOGLE_API_KEY"] = new_key
-            else:
-                os.environ["API_KEY"] = new_key
+            if label:
+                os.environ[label] = new_key
             # Reinizializza client
             try:
                 client = create_llm_client(provider, new_key, model, base_url)
@@ -390,6 +482,49 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Errore nell'inizializzazione client: {e}")
     
+    st.markdown("---")
+    
+    # RAG Section
+    st.subheader("🧠 RAG - Ricette Professionali")
+    st.info("Usa le tue ricette PDF per generare piani alimentari più affidabili.")
+    
+    # Toggle per attivare/disattivare RAG
+    rag_enabled = st.toggle(
+        "Attiva RAG (usa ricette da PDF)", 
+        value=st.session_state.get('rag_enabled', False),
+        help="Se attivo, l'agente userà le ricette indicizzate dai tuoi file PDF per creare il piano."
+    )
+    st.session_state.rag_enabled = rag_enabled
+
+    # Bottone per indicizzare
+    if st.button("📚 Indicizza Ricette PDF"):
+        ricette_path = Path(__file__).parent / "ricette"
+        index_path = Path(__file__).parent / "rag_index"
+        if not ricette_path.exists() or not any(ricette_path.iterdir()):
+            st.error(f"❌ Cartella 'ricette' non trovata o vuota. Crea la cartella in `{ricette_path}` e inserisci i tuoi PDF.")
+        else:
+            with st.spinner("🔬 Analisi e indicizzazione dei PDF in corso..."):
+                try:
+                    from rag.index import RAGConfig
+                    config = RAGConfig(corpus_dir=ricette_path, index_dir=index_path)
+                    indexer = RecipeIndexer(config=config)
+                    indexer.ensure_index() # build or load
+                    st.session_state.recipe_indexer = indexer
+                    # persist meta so we can reload index on page reload
+                    try:
+                        save_index_meta(index_path)
+                    except Exception:
+                        pass
+                    st.success(f"✅ Indicizzazione completata! {len(indexer.metadata)} documenti processati.")
+                except Exception as e:
+                    st.error(f"Errore durante l'indicizzazione: {e}")
+
+    # Mostra stato dell'indice
+    if st.session_state.recipe_indexer:
+        st.success(f"✅ Indice pronto con {len(st.session_state.recipe_indexer.metadata)} documenti.")
+    elif rag_enabled:
+        st.warning("⚠️ RAG è attivo, ma l'indice non è stato creato. Clicca 'Indicizza Ricette PDF'.")
+
     st.markdown("---")
     
     # Navigation
@@ -403,6 +538,15 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Impostazione numero pasti (3 senza spuntini, 5 con spuntini)
+    st.subheader("🍽️ Numero pasti giornalieri")
+    pasti_options = {
+        "3 (senza spuntini)": False,
+        "5 (con spuntini)": True,
+    }
+    pasti_choice = st.selectbox("Seleziona numero pasti", list(pasti_options.keys()), index=0)
+    st.session_state.include_snacks = pasti_options[pasti_choice]
+
     # Quick stats
     if st.session_state.agent:
         st.subheader("📈 Stats Rapide")
@@ -461,22 +605,65 @@ if page == "🏠 Home":
                 if st.session_state.agent is None:
                     st.error("❌ Agent non inizializzato. Controlla la configurazione del provider e ricarica la pagina.")
                 else:
-                    with st.spinner("Generando piano giornaliero..."):
-                        try:
-                            today = datetime.now().strftime("%Y-%m-%d")
-                            weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
-                            is_workout = weekday_it in (st.session_state.profile.workout_days or [])
-                            plan = st.session_state.agent.generate_daily_plan(today, is_workout)
-                            st.session_state.current_plan = plan
-                            st.success("✅ Piano generato!")
-                            st.rerun()
-                        except Exception as e:
-                            # Cerca messaggio chiave API scaduta
-                            msg = str(e)
-                            if "API key expired" in msg or "API_KEY_INVALID" in msg:
-                                st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                    # Crea placeholder per la barra di avanzamento
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    timer_text = st.empty()
+                    steps_text = st.empty()
+                    
+                    try:
+                        import time
+                        start_time = time.time()
+                        
+                        today = datetime.now().strftime("%Y-%m-%d")
+                        weekday_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"][datetime.now().weekday()]
+                        is_workout = weekday_it in (st.session_state.profile.workout_days or [])
+                        include_snacks = bool(st.session_state.get("include_snacks", False))
+                        
+                        # Callback per aggiornare la barra di avanzamento
+                        def update_progress(current, total, meal_name):
+                            progress = current / total
+                            progress_bar.progress(progress)
+                            elapsed = int(time.time() - start_time)
+                            status_text.markdown(f"### Generando {meal_name}... ({current}/{total})")
+                            # Mostra breadcrumb semplice 1, 2, 3 e 'Fine' al termine
+                            done_steps = ", ".join(str(i) for i in range(1, current + 1))
+                            if current < total:
+                                steps_text.text(f"Passi: {done_steps}")
                             else:
-                                st.error(f"Errore nella generazione del piano: {e}")
+                                steps_text.text(f"Passi: {done_steps}, Fine")
+                            # Stima tempo
+                            est = int(elapsed / current * total) if current > 0 else 0
+                            timer_text.text(f"Tempo trascorso: {elapsed}s | Stima totale: ~{est}s")
+                        
+                        plan = st.session_state.agent.generate_daily_plan(
+                            date=today, 
+                            is_workout_day=is_workout, 
+                            include_snacks=include_snacks,
+                            progress_callback=update_progress,
+                            rag_enabled=st.session_state.get('rag_enabled', False),
+                            recipe_indexer=st.session_state.get('recipe_indexer')
+                        )
+                        
+                        total_time = int(time.time() - start_time)
+                        progress_bar.progress(1.0)
+                        status_text.markdown(f"### ✅ Piano completato ({3 if not include_snacks else 5}/{3 if not include_snacks else 5}) — Fine")
+                        steps_text.text("Passi: 1, 2, 3, Fine" if not include_snacks else "Passi: 1, 2, 3, 4, 5, Fine")
+                        timer_text.text(f"Tempo totale: {total_time}s")
+                        st.session_state.current_plan = plan
+                        try:
+                            save_plan_cache(plan)
+                        except Exception:
+                            pass
+                        st.success("✅ Piano generato!")
+                        st.rerun()
+                    except Exception as e:
+                        # Cerca messaggio chiave API scaduta
+                        msg = str(e)
+                        if "API key expired" in msg or "API_KEY_INVALID" in msg:
+                            st.error("❌ API Key scaduta o invalida. Aggiorna la chiave nella sidebar sotto '🔑 Configura/aggiorna GOOGLE_API_KEY'.")
+                        else:
+                            st.error(f"Errore nella generazione del piano: {e}")
         
         with col2:
             if st.button("📆 Genera Piano Settimana", type="secondary", use_container_width=True):
@@ -614,47 +801,35 @@ elif page == "👤 Profilo":
                     "Cibi da evitare (separati da virgola)",
                     value="funghi, cozze"
                 )
-                allergies = st.text_input("Allergie", value="")
-                intolerances = st.text_input("Intolleranze", value="")
+                allergies = st.text_area("Allergie (separati da virgola)", value="")
+                intolerances = st.text_area("Intolleranze (separati da virgola)", value="")
+                vegetarian = st.checkbox("Vegetariano")
+                vegan = st.checkbox("Vegano")
+                gluten_free = st.checkbox("Senza glutine")
+                dairy_free = st.checkbox("Senza latticini")
+                meal_prep = st.checkbox("Meal prep")
                 
-                st.markdown("**Restrizioni Dietetiche**")
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    vegetarian = st.checkbox("Vegetariano")
-                    gluten_free = st.checkbox("Senza glutine")
-                with col_b:
-                    vegan = st.checkbox("Vegano")
-                    dairy_free = st.checkbox("Senza latticini")
-            
-            st.markdown("**Allenamento**")
-            col1, col2, col3 = st.columns(3)
-            with col1:
                 workout_days = st.multiselect(
-                    "Giorni allenamento",
-                    ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+                    "Giorni di allenamento",
+                    options=["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
                     default=["lunedì", "mercoledì", "venerdì"]
                 )
-            with col2:
-                workout_time = st.selectbox("Orario allenamento", ["mattina", "pomeriggio", "sera"], index=1)
-            with col3:
-                meal_prep = st.checkbox("Meal Prep", value=True, help="Prepari pasti in anticipo?")
-            
-            st.markdown("**Altro**")
-            col1, col2 = st.columns(2)
-            with col1:
-                cooking_time = st.selectbox("Tempo disponibile cucina", ["breve", "medio", "lungo"], index=1)
-            with col2:
-                budget = st.selectbox("Budget", ["basso", "medio", "alto"], index=1)
-            
-            if st.button("💾 Salva Profilo", type="primary", use_container_width=True):
-                # Crea profilo
+                
+                workout_time = st.selectbox("Orario allenamento", options=["mattina", "pomeriggio", "sera"], index=1)
+                cooking_time = st.selectbox("Tempo cottura disponibile", options=["breve", "medio", "lungo"], index=1)
+                budget = st.select_slider(
+                    "Livello di budget",
+                    options=["Basso", "Medio", "Alto"],
+                    value="Medio"
+                )
+                
                 profile = UserProfile(
                     name=name,
                     age=age,
                     weight=weight,
                     height=height,
-                    activity_level=ActivityLevel(activity),
-                    dietary_goal=DietaryGoal(goal),
+                    activity_level=ActivityLevel[activity.upper()],
+                    dietary_goal=DietaryGoal[goal.upper()],
                     preferred_foods=[f.strip() for f in preferred.split(",")],
                     disliked_foods=[f.strip() for f in disliked.split(",")],
                     allergies=[a.strip() for a in allergies.split(",") if a.strip()],
@@ -664,8 +839,8 @@ elif page == "👤 Profilo":
                     gluten_free=gluten_free,
                     dairy_free=dairy_free,
                     workout_days=workout_days,
-                    workout_time=workout_time,
-                    cooking_time_available=cooking_time,
+                    workout_time=str(workout_time),
+                    cooking_time_available=str(cooking_time),
                     budget_level=budget,
                     meal_prep=meal_prep
                 )
@@ -715,10 +890,17 @@ elif page == "📅 Piano Giornaliero":
                 with st.spinner("🤖 AI sta preparando il tuo piano..."):
                     try:
                         plan = st.session_state.agent.generate_daily_plan(
-                            selected_date.strftime("%Y-%m-%d"), 
-                            is_workout
+                            date=selected_date.strftime("%Y-%m-%d"), 
+                            is_workout_day=is_workout,
+                            include_snacks=bool(st.session_state.get("include_snacks", False)),
+                            rag_enabled=st.session_state.get('rag_enabled', False),
+                            recipe_indexer=st.session_state.get('recipe_indexer')
                         )
                         st.session_state.current_plan = plan
+                        try:
+                            save_plan_cache(plan)
+                        except Exception:
+                            pass
                         st.success("✅ Piano generato!")
                         st.rerun()
                     except Exception as e:
@@ -754,7 +936,33 @@ elif page == "📅 Piano Giornaliero":
                     with col1:
                         st.markdown("**📝 Ingredienti:**")
                         for ing in meal.ingredients:
-                            st.markdown(f"- {ing['nome']}: **{ing['quantità']}**")
+                            try:
+                                if isinstance(ing, dict):
+                                    name = (
+                                        ing.get("nome")
+                                        or ing.get("name")
+                                        or ing.get("ingrediente")
+                                        or ing.get("ingredient")
+                                        or ing.get("item")
+                                        or "ingrediente"
+                                    )
+                                    qty = (
+                                        ing.get("quantità")
+                                        or ing.get("quantity")
+                                        or ing.get("qty")
+                                        or ing.get("amount")
+                                        or "q.b."
+                                    )
+                                elif isinstance(ing, str):
+                                    name = ing
+                                    qty = "q.b."
+                                else:
+                                    name = str(ing)
+                                    qty = "q.b."
+                                st.markdown(f"- {name}: **{qty}**")
+                            except Exception:
+                                # fallback robusto
+                                st.markdown(f"- {str(ing)}")
                         
                         st.markdown("**👨‍🍳 Preparazione:**")
                         for i, step in enumerate(meal.instructions, 1):
@@ -810,6 +1018,10 @@ elif page == "📆 Piano Settimanale":
                     weekly = st.session_state.agent.generate_weekly_plan()
                     # Save to session
                     st.session_state.weekly_plan = weekly
+                    try:
+                        save_weekly_cache(weekly)
+                    except Exception:
+                        pass
                     st.success("✅ Piano settimanale generato!")
                 except Exception as e:
                     msg = str(e)

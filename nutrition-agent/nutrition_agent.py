@@ -420,6 +420,35 @@ LINEE GUIDA GENERALI:
 10. Se meal prep: suggerisci ricette batch-friendly
 """
 
+        # Regole specifiche basate sul feedback utente
+        prompt += """
+REGOLE SPECIFICHE DA RISPETTARE (feedback utente):
+=================================================
+1) Colazione in stile italiano (tendenzialmente dolce):
+   - Preferisci yogurt greco, miele, tahina, avena/fiocchi d'avena, biscotti secchi tipo digestive/saraceni, frutta secca (datteri/fichi secchi) in piccole quantità.
+   - Evita colazioni salate con uova, spinaci, salumi o piatti da brunch anglosassone.
+   - NIENTE frutta fresca (l'utente non la consuma); per dolcezza usa miele o frutta secca.
+   - Quinoa: NON proporla a colazione.
+
+2) Panini e pane:
+   - Non esiste "panino con farro". Se proponi un panino/sandwich, usa pane integrale (o segale) come base.
+   - Se nella generazione compare "panino con farro", correggi in "panino con pane integrale".
+
+3) Varietà delle verdure (cavolo nero):
+   - Non usare cavolo nero tutti i giorni. Massimo 2 volte a settimana e non ripetuto più volte nello stesso giorno.
+   - Varia tra cavolo verza, bietole/coste, spinaci, cicoria, radicchio, broccoli, zucca, finocchi, ecc.
+
+4) Nomi autentici e coerenza culinaria:
+   - Evita nomi inventati o impropri (es: "cipolla alla romana"). Usa denominazioni tradizionali o descrittive precise.
+   - Correggi errori di ortografia ("spaghetti", "fagioli").
+
+5) Carboidrati complessi a pranzo e cena:
+   - Includi sempre una base tra: pane integrale, pasta integrale, riso integrale, cous cous integrale, farro, orzo, quinoa.
+
+6) Uova:
+   - Limite massimo 5–6 uova a settimana complessiva. In generale, non proporre uova a colazione per stile italiano.
+"""
+
         prompt += """
 FORMATO RISPOSTA:
 =================
@@ -509,6 +538,9 @@ ESEMPIO RICETTA AUTENTICA:
 ⭐ GENERA RICETTE VERE, TESTATE, AUTENTICHE. Come se fossi uno chef professionista con 20 anni di esperienza in cucina italiana e internazionale. Ogni ricetta deve essere replicabile con successo da chiunque seguendo le tue istruzioni.
 """
 
+        # Richiedi esplicitamente il JSON in un blocco di codice per facilitare il parsing
+        prompt += "\nATTENZIONE: Quando rispondi, restituisci SOLO il JSON della ricetta racchiuso all'interno di un blocco di codice con linguaggio 'json', ad esempio:\n```json\n{ ... }\n```\nNon inviare testo aggiuntivo prima o dopo il blocco di codice."
+
         return prompt
     
     def generate_daily_plan(self, date: Optional[str] = None, is_workout_day: bool = False) -> DailyPlan:
@@ -583,14 +615,42 @@ Requisiti specifici per {meal_type.value}:
 """
         
         if meal_type == MealType.COLAZIONE:
-            context += "- Energetica ma leggera\n- 300-500 calorie\n- Proteine: 20-30g\n"
+            context += (
+                "- Energetica ma leggera\n"
+                "- 300-500 calorie\n"
+                "- Proteine: 20-30g\n"
+                "- Stile italiano tendenzialmente dolce: yogurt greco, miele, tahina, avena/fiocchi d'avena, biscotti secchi, frutta secca (no frutta fresca)\n"
+                "- Evita uova/salato a colazione.\n"
+                "- Vietato usare quinoa a colazione.\n"
+            )
         elif meal_type == MealType.PRANZO:
             if is_workout_day:
-                context += "- Bilanciata con focus su carboidrati complessi\n- 500-700 calorie\n- Proteine: 35-45g\n"
+                context += (
+                    "- Bilanciata con focus su carboidrati complessi\n"
+                    "- 500-700 calorie\n"
+                    "- Proteine: 35-45g\n"
+                    "- Includi sempre una base tra: pane integrale, pasta integrale, riso integrale, cous cous integrale, farro, orzo, quinoa.\n"
+                    "- Varia le verdure; non usare cavolo nero tutti i giorni.\n"
+                    "- Per panini/sandwich non usare 'panino con farro': usa pane integrale.\n"
+                )
             else:
-                context += "- Bilanciata\n- 400-600 calorie\n- Proteine: 30-40g\n"
+                context += (
+                    "- Bilanciata\n"
+                    "- 400-600 calorie\n"
+                    "- Proteine: 30-40g\n"
+                    "- Includi sempre una base tra: pane integrale, pasta integrale, riso integrale, cous cous integrale, farro, orzo, quinoa.\n"
+                    "- Varia le verdure; non usare cavolo nero tutti i giorni.\n"
+                    "- Per panini/sandwich non usare 'panino con farro': usa pane integrale.\n"
+                )
         elif meal_type == MealType.CENA:
-            context += "- Leggera e digeribile\n- 400-600 calorie\n- Proteine: 30-40g\n"
+            context += (
+                "- Leggera e digeribile\n"
+                "- 400-600 calorie\n"
+                "- Proteine: 30-40g\n"
+                "- Includi sempre una base tra: pane integrale, pasta integrale, riso integrale, cous cous integrale, farro, orzo, quinoa.\n"
+                "- Varia le verdure; non usare cavolo nero tutti i giorni.\n"
+                "- Per panini/sandwich non usare 'panino con farro': usa pane integrale.\n"
+            )
         elif meal_type in [MealType.SPUNTINO_MATTINA, MealType.SPUNTINO_POMERIGGIO]:
             context += "- Leggero e nutriente\n- 150-250 calorie\n- Proteine: 10-15g\n"
         elif meal_type == MealType.POST_WORKOUT:
@@ -602,18 +662,97 @@ Requisiti specifici per {meal_type.value}:
         prompt = f"{self._build_system_prompt()}\n\n{context}"
         response = self.client.invoke(input=prompt, max_tokens=2000)
         
-        # Parse risposta
+        # Parse risposta (più robusto e con logging raw on failure)
         try:
-            # Estrai JSON dalla risposta
-            text = response.text
-            # Rimuovi markdown code blocks se presenti
+            text = response.text or ""
+
+            # Prefer code-fenced JSON blocks
+            candidate = None
             if "```json" in text:
-                text = text.split("```json")[1].split("```")[0].strip()
+                candidate = text.split("```json", 1)[1].split("```", 1)[0].strip()
             elif "```" in text:
-                text = text.split("```")[1].split("```")[0].strip()
+                candidate = text.split("```", 1)[1].split("```", 1)[0].strip()
+            else:
+                candidate = text.strip()
+
+            meal_data = None
             
-            meal_data = json.loads(text)
-            
+            def _pre_fix_values(s: str) -> str:
+                """Heuristic fixes for common LLM JSON issues on values.
+                - Quote unquoted quantity values like 100g, 1 cucchiaio, 50 g, q.b., etc.
+                - Keep numeric fields (calories, prep_time, cooking_time, macros) untouched.
+                """
+                import re
+                t = s
+                # Quote unquoted quantities for keys quantità/quantity
+                # pattern: "quantità" : 100g  -> "quantità": "100g"
+                t = re.sub(r'("quantità"|"quantity")\s*:\s*([0-9]+\s*[a-zA-Z\.]+)', r'\1: "\2"', t)
+                # Also handle cases like 1 cucchiaio, 2 cucchiai, 50 ml, 1/2 cucchiaino
+                t = re.sub(r'("quantità"|"quantity")\s*:\s*([0-9]+\s*/?[0-9]*\s*[a-zA-ZàèéìòùÀÈÉÌÒÙ\.]+)', r'\1: "\2"', t)
+                # Quote q.b. if unquoted
+                t = re.sub(r'("quantità"|"quantity")\s*:\s*(q\.b\.)', r'\1: "q.b."', t)
+                # For ingredient-level dicts missing quotes around units with decimals/commas (e.g., 0,5 cucchiaino)
+                t = re.sub(r'("quantità"|"quantity")\s*:\s*([0-9]+[,\.]?[0-9]*\s*[a-zA-ZàèéìòùÀÈÉÌÒÙ\.]+)', r'\1: "\2"', t)
+                return t
+
+            # First try direct load
+            try:
+                meal_data = json.loads(candidate)
+            except Exception:
+                # Heuristic fixes
+                import re
+                fixed = candidate.replace("'", '"')
+                fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+                fixed = re.sub(r'([\{,\n\s])([A-Za-z0-9_]+)\s*:', lambda m: f'{m.group(1)}"{m.group(2)}":', fixed)
+                fixed = _pre_fix_values(fixed)
+                try:
+                    meal_data = json.loads(fixed)
+                except Exception:
+                    # Try to find balanced JSON blocks in the whole response
+                    import re as _re
+                    # Find all candidate JSON-like blocks
+                    blocks = _re.findall(r"(\{(?:.|\n)*?\})|(\[(?:.|\n)*?\])", text)
+                    best_candidate = None
+                    for b in blocks:
+                        blk = b[0] or b[1]
+                        if not blk:
+                            continue
+                        # Try parse with fixes
+                        cand = blk.replace("'", '"')
+                        cand = _re.sub(r",\s*([}\]])", r"\1", cand)
+                        cand = _re.sub(r'([\{,\n\s])([A-Za-z0-9_]+)\s*:', lambda m: f'{m.group(1)}"{m.group(2)}":', cand)
+                        cand = _pre_fix_values(cand)
+                        try:
+                            obj = json.loads(cand)
+                        except Exception:
+                            continue
+                        # If it's a list, search for a dict with required keys
+                        def pick_valid(o):
+                            if isinstance(o, dict) and all(k in o for k in ("recipe_name", "ingredients")):
+                                return o
+                            if isinstance(o, list):
+                                for it in o:
+                                    if isinstance(it, dict) and all(k in it for k in ("recipe_name", "ingredients")):
+                                        return it
+                            return None
+                        chosen = pick_valid(obj)
+                        if chosen is not None:
+                            best_candidate = chosen
+                            break
+                    meal_data = best_candidate
+
+            if meal_data is None:
+                # salva la risposta raw su disco per debugging
+                try:
+                    cache_dir = Path(__file__).parent / ".cache"
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    last_path = cache_dir / "last_response.txt"
+                    with open(last_path, "w", encoding="utf-8") as f:
+                        f.write(text)
+                except Exception:
+                    pass
+                raise ValueError("No valid JSON found in LLM response")
+
             # Normalizza i macros (gestisci chiavi inglesi/italiane)
             macros = meal_data.get("macros", {})
             normalized_macros = {
